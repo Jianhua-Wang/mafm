@@ -1,6 +1,11 @@
 # Changelog
 
 
+## [0.0.7] (2024-10-09)
+
+### Added
+- test for ldmatrix
+
 ## [0.0.6] (2024-10-09)
 
 ### Added

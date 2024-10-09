@@ -1,6 +1,4 @@
-"""
-
-"""
+"""Functions for processing summary statistics data."""
 
 import logging
 from typing import Optional
@@ -13,7 +11,9 @@ logger = logging.getLogger("Sumstats")
 
 
 def get_significant_snps(
-    df: pd.DataFrame, pvalue_threshold: float = 5e-8, use_most_sig_if_no_sig: bool = True
+    df: pd.DataFrame,
+    pvalue_threshold: float = 5e-8,
+    use_most_sig_if_no_sig: bool = True,
 ) -> pd.DataFrame:
     """
     Retrieve significant SNPs from the input DataFrame based on a p-value threshold.
@@ -70,7 +70,9 @@ def get_significant_snps(
             sig_df = df.loc[df[ColName.P] == min_pvalue].copy()
             if sig_df.empty:
                 raise ValueError("The DataFrame is empty. No SNPs available to select.")
-            logging.debug(f"Using the most significant SNP: {sig_df.iloc[0][ColName.SNPID]}")
+            logging.debug(
+                f"Using the most significant SNP: {sig_df.iloc[0][ColName.SNPID]}"
+            )
             logging.debug(f"p-value: {sig_df.iloc[0][ColName.P]}")
         else:
             raise ValueError("No significant SNPs found.")

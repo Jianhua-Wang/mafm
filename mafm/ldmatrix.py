@@ -1,9 +1,4 @@
-"""
-This module contains functions for reading and converting lower triangle matrices.
-"""
-
-import warnings
-from typing import List
+"""Functions for reading and converting lower triangle matrices."""
 
 import numpy as np
 
@@ -34,7 +29,9 @@ def read_lower_triangle(file_path: str, delimiter: str = "\t") -> np.ndarray:
     try:
         with open(file_path, "r") as file:
             rows = [
-                list(map(float, line.strip().split(delimiter))) for line in file if line.strip()
+                list(map(float, line.strip().split(delimiter)))
+                for line in file
+                if line.strip()
             ]
     except FileNotFoundError:
         raise FileNotFoundError(f"The file '{file_path}' does not exist.")
@@ -91,11 +88,7 @@ def lower_triangle_to_symmetric(file_path: str, delimiter: str = "\t") -> np.nda
             [0.2 , 0.4 , 1.  , 0.6 ],
             [0.3 , 0.5 , 0.6 , 1.  ]])
     """
-    # Read the lower triangle matrix from the file
     lower_triangle = read_lower_triangle(file_path, delimiter)
-
-    # Determine the size of the square matrix
-    n = lower_triangle.shape[0]
 
     # Create the symmetric matrix
     symmetric_matrix = lower_triangle + lower_triangle.T

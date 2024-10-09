@@ -1,6 +1,4 @@
-"""
-
-"""
+"""Functions and decorators for common tasks in Python programming."""
 
 import logging
 import shutil
@@ -17,7 +15,7 @@ F = TypeVar("F", bound=Callable[..., any])  # type: ignore
 
 def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
     """
-    Decorator to create a temporary directory for I/O operations during function execution.
+    Create a temporary directory for I/O operations during function execution.
 
     This decorator creates a temporary directory before executing the decorated function and
     provides the path to this directory via the `temp_dir` keyword argument. After the function
