@@ -50,11 +50,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install poetry
+          pip install mkdocs mkdocs-material mkdocstrings mkdocs-include-markdown-plugin mkdocs-autorefs mkdocstrings-python mkdocs-material-extensions
 
       - name: build documentation
-        run: |
-          poetry install -E doc
-          poetry run mkdocs build
+        run:
+          mkdocs build
 
       - name: publish documentation
         uses: peaceiris/actions-gh-pages@v3
