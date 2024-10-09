@@ -7,11 +7,12 @@ on:
   # Triggers the workflow on push events but only for the master branch
   push:
     tags:
-      - 'v*'
+      - "v*"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
-
+permissions:
+  contents: write
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "release"
@@ -53,8 +54,7 @@ jobs:
           pip install mkdocs mkdocs-material mkdocstrings mkdocs-include-markdown-plugin mkdocs-autorefs mkdocstrings-python mkdocs-material-extensions
 
       - name: build documentation
-        run:
-          mkdocs build
+        run: mkdocs build
 
       - name: publish documentation
         uses: peaceiris/actions-gh-pages@v3
