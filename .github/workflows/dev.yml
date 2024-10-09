@@ -35,11 +35,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install poetry tox tox-gh-actions mkdocs mkdocs-material mkdocstrings mkdocs-include-markdown-plugin mkdocs-autorefs mkdocstrings-python mkdocs-material-extensions
-          pip install black isort flake8 flake8-docstrings mypy pytest pytest-cov twine 
+          pip install poetry tox tox-gh-actions
+          poetry install --with dev
+      # pip install mkdocs mkdocs-material mkdocstrings mkdocs-include-markdown-plugin mkdocs-autorefs mkdocstrings-python mkdocs-material-extensions
+      # pip install black isort flake8 flake8-docstrings mypy pytest pytest-cov twine 
 
       - name: test with tox
-        run: tox -e build
+        run: tox
 
       - name: list files
         run: ls -l .
