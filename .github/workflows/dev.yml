@@ -37,7 +37,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install poetry tox tox-gh-actions
           pip install mkdocs mkdocs-material mkdocstrings mkdocs-include-markdown-plugin mkdocs-autorefs mkdocstrings-python mkdocs-material-extensions
-          pip install black isort flake8 flake8-docstrings mypy pytest pytest-cov twine
+          pip install black isort flake8 flake8-docstrings mypy pytest pytest-cov twine numpy
 
       - name: test with tox
         run: tox
