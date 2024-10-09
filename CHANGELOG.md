@@ -1,5 +1,5 @@
 # Changelog
 
-## [0.0.4] (2024-10-08)
+## [0.0.5] (2024-10-08)
 
 * First release on PyPI.
