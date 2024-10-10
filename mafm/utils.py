@@ -1,6 +1,7 @@
 """Functions and decorators for common tasks in Python programming."""
 
 import logging
+import os
 import shutil
 import tempfile
 from functools import wraps
@@ -54,6 +55,8 @@ def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args, **kwargs) -> any:  # type: ignore
+            if not os.path.exists(dir):
+                os.makedirs(dir, exist_ok=True)
             temp_dir = tempfile.mkdtemp(dir=dir)
             logger = logging.getLogger("IO")
             logger.debug(f"Created temporary directory: {temp_dir}")

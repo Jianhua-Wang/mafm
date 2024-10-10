@@ -1,11 +1,10 @@
 """Functions for processing summary statistics data."""
 
 import logging
-from typing import Optional
 
 import pandas as pd
 
-from .constants import ColName
+from .constants import ColName, ColRange, ColType
 
 logger = logging.getLogger("Sumstats")
 
@@ -46,14 +45,14 @@ def get_significant_snps(
     --------
     >>> data = {
     ...     'SNPID': ['rs1', 'rs2', 'rs3'],
-    ...     'P': [1e-9, 0.05, 1e-7]
+    ...     'P': [1e-9, 0.05, 1e-8]
     ... }
     >>> df = pd.DataFrame(data)
     >>> significant_snps = get_significant_snps(df, pvalue_threshold=5e-8)
     >>> print(significant_snps)
-        snp_id  p_value
+        SNPID  P
     0    rs1   1.0e-09
-    1    rs3   1.0e-07
+    1    rs3   1.0e-08
     """
     required_columns = {ColName.P, ColName.SNPID}
     missing_columns = required_columns - set(df.columns)
@@ -62,7 +61,7 @@ def get_significant_snps(
             f"The following required columns are missing from the DataFrame: {missing_columns}"
         )
 
-    sig_df = df.loc[df[ColName.P] < pvalue_threshold].copy()
+    sig_df = df.loc[df[ColName.P] <= pvalue_threshold].copy()
 
     if sig_df.empty:
         if use_most_sig_if_no_sig:
@@ -147,10 +146,6 @@ def make_SNPID_unique(
     0  1-12345-A-G    1  12345  A   G  rs1  1.0e-05
     1  2-67890-A-G    2  67890  G   A  rs3  1.0e-07
     """
-    # col_chr = col_chr or ColName.CHR
-    # col_bp = col_bp or ColName.BP
-    # col_ea = col_ea or ColName.EA
-    # col_nea = col_nea or ColName.NEA
     required_columns = {
         col_chr,
         col_bp,
@@ -194,8 +189,9 @@ def make_SNPID_unique(
 
     if remove_duplicates and n_duplicated > 0:
         logger.debug(f"Number of duplicated SNPs: {n_duplicated}")
-        # Sort by p-value to keep the SNP with the smallest p-value
-        df.sort_values(by=col_p, inplace=True)
+        if col_p in df.columns:
+            # Sort by p-value to keep the SNP with the smallest p-value
+            df.sort_values(by=col_p, inplace=True)
         df.drop_duplicates(subset=[ColName.SNPID], keep="first", inplace=True)
         # Sort DataFrame by chromosome and base-pair position
         df.sort_values(by=[col_chr, col_bp], inplace=True)
@@ -211,10 +207,351 @@ def make_SNPID_unique(
         dup_tail = dup_tail.str.replace("-0", "")
         df[ColName.SNPID] = df[ColName.SNPID] + dup_tail
 
-    if df.empty:
-        raise ValueError("The resulting DataFrame is empty after processing.")
-
     logging.debug("Unique SNPIDs have been successfully created.")
     logging.debug(f"Total unique SNPs: {len(df)}")
 
     return df
+
+
+def check_colnames(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Check column names in the DataFrame and fill missing columns with None.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame to check for column names.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with all required columns, filling missing ones with None.
+    """
+    outdf: pd.DataFrame = df.copy()
+    for col in ColName.sumstat_cols:
+        if col not in outdf.columns:
+            outdf[col] = None
+    return outdf[ColName.sumstat_cols]
+
+
+def check_mandatory_cols(df: pd.DataFrame) -> None:
+    """
+    Check if the DataFrame contains all mandatory columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame to check for mandatory columns.
+
+    Raises
+    ------
+    ValueError
+        If any mandatory columns are missing.
+    """
+    outdf = df.copy()
+    missing_cols = set(ColName.mandatory_cols) - set(outdf.columns)
+    if missing_cols:
+        raise ValueError(f"Missing mandatory columns: {missing_cols}")
+    return None
+
+
+def rm_col_allna(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove columns from the DataFrame that are entirely NA.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame from which to remove columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with columns that are entirely NA removed.
+    """
+    outdf = df.copy()
+    outdf = outdf.replace("", None)
+    for col in outdf.columns:
+        if outdf[col].isnull().all():
+            logger.debug(f"Remove column {col} because it is all NA.")
+            outdf.drop(col, axis=1, inplace=True)
+    return outdf
+
+
+def munge(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge the summary statistics DataFrame by performing a series of transformations.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame containing summary statistics.
+
+    Returns
+    -------
+    pd.DataFrame
+        The munged DataFrame with necessary transformations applied.
+
+    Raises
+    ------
+    ValueError
+        If any mandatory columns are missing.
+    """
+    check_mandatory_cols(df)
+    outdf = df.copy()
+    outdf = rm_col_allna(outdf)
+    outdf = munge_chr(outdf)
+    outdf = munge_bp(outdf)
+    outdf = munge_allele(outdf)
+    outdf = make_SNPID_unique(outdf)
+    outdf = munge_pvalue(outdf)
+    outdf = outdf.sort_values(by=[ColName.CHR, ColName.BP])
+    outdf = munge_beta(outdf)
+    outdf = munge_se(outdf)
+    outdf = munge_eaf(outdf)
+    outdf[ColName.MAF] = outdf[ColName.EAF]
+    outdf = munge_maf(outdf)
+    if ColName.RSID in outdf.columns:
+        outdf = munge_rsid(outdf)
+    outdf = check_colnames(outdf)
+    return outdf
+
+
+def munge_rsid(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge rsID column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with rsID column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged rsID column.
+    """
+    outdf = df.copy()
+    outdf[ColName.RSID] = outdf[ColName.RSID].astype(ColType.RSID)
+    return outdf
+
+
+def munge_chr(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge chromosome column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with chromosome column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged chromosome column.
+    """
+    pre_n = df.shape[0]
+    outdf = df[df[ColName.CHR].notnull()].copy()
+    outdf[ColName.CHR] = outdf[ColName.CHR].astype(str)
+    outdf[ColName.CHR] = outdf[ColName.CHR].str.replace("chr", "")
+    outdf[ColName.CHR] = outdf[ColName.CHR].replace(["X", "x"], 23)
+    outdf[ColName.CHR] = pd.to_numeric(outdf[ColName.CHR], errors="coerce")
+    outdf = outdf[outdf[ColName.CHR].notnull()]
+    outdf = outdf[
+        (outdf[ColName.CHR] >= ColRange.CHR_MIN)
+        & (outdf[ColName.CHR] <= ColRange.CHR_MAX)
+    ]
+    after_n = outdf.shape[0]
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid chromosome.")
+    outdf[ColName.CHR] = outdf[ColName.CHR].astype(ColType.CHR)
+    return outdf
+
+
+def munge_bp(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge position column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with position column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged position column.
+    """
+    pre_n = df.shape[0]
+    outdf = df[df[ColName.BP].notnull()].copy()
+    outdf[ColName.BP] = pd.to_numeric(outdf[ColName.BP], errors="coerce")
+    outdf = outdf[outdf[ColName.BP].notnull()]
+    outdf = outdf[
+        (outdf[ColName.BP] > ColRange.BP_MIN) & (outdf[ColName.BP] < ColRange.BP_MAX)
+    ]
+    after_n = outdf.shape[0]
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid position.")
+    outdf[ColName.BP] = outdf[ColName.BP].astype(ColType.BP)
+    return outdf
+
+
+def munge_allele(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge allele columns.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with allele columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged allele columns.
+    """
+    outdf = df.copy()
+    for col in [ColName.EA, ColName.NEA]:
+        pre_n = outdf.shape[0]
+        outdf = outdf[outdf[col].notnull()]
+        outdf[col] = outdf[col].astype(str).str.upper()
+        outdf = outdf[outdf[col].str.match(r"^[ACGT]+$")]
+        after_n = outdf.shape[0]
+        logger.debug(f"Remove {pre_n - after_n} rows because of invalid {col}.")
+    outdf = outdf[outdf[ColName.EA] != outdf[ColName.NEA]]
+    return outdf
+
+
+def munge_pvalue(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge p-value column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with p-value column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged p-value column.
+    """
+    outdf = df.copy()
+    pre_n = outdf.shape[0]
+    outdf[ColName.P] = pd.to_numeric(outdf[ColName.P], errors="coerce")
+    outdf = outdf[outdf[ColName.P].notnull()]
+    outdf = outdf[
+        (outdf[ColName.P] > ColRange.P_MIN) & (outdf[ColName.P] < ColRange.P_MAX)
+    ]
+    after_n = outdf.shape[0]
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid p-value.")
+    outdf[ColName.P] = outdf[ColName.P].astype(ColType.P)
+    return outdf
+
+
+def munge_beta(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge beta column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with beta column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged beta column.
+    """
+    pre_n = df.shape[0]
+    outdf = df.copy()
+    outdf[ColName.BETA] = pd.to_numeric(outdf[ColName.BETA], errors="coerce")
+    outdf = outdf[outdf[ColName.BETA].notnull()]
+    after_n = outdf.shape[0]
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid beta.")
+    outdf[ColName.BETA] = outdf[ColName.BETA].astype(ColType.BETA)
+    return outdf
+
+
+def munge_se(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge standard error column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with standard error column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged standard error column.
+    """
+    pre_n = df.shape[0]
+    outdf = df.copy()
+    outdf[ColName.SE] = pd.to_numeric(outdf[ColName.SE], errors="coerce")
+    outdf = outdf[outdf[ColName.SE].notnull()]
+    outdf = outdf[outdf[ColName.SE] > ColRange.SE_MIN]
+    after_n = outdf.shape[0]
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid standard error.")
+    outdf[ColName.SE] = outdf[ColName.SE].astype(ColType.SE)
+    return outdf
+
+
+def munge_eaf(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge effect allele frequency column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with effect allele frequency column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged effect allele frequency column.
+    """
+    pre_n = df.shape[0]
+    outdf = df.copy()
+    outdf[ColName.EAF] = pd.to_numeric(outdf[ColName.EAF], errors="coerce")
+    outdf = outdf[outdf[ColName.EAF].notnull()]
+    outdf = outdf[
+        (outdf[ColName.EAF] >= ColRange.EAF_MIN)
+        & (outdf[ColName.EAF] <= ColRange.EAF_MAX)
+    ]
+    after_n = outdf.shape[0]
+    logger.debug(
+        f"Remove {pre_n - after_n} rows because of invalid effect allele frequency."
+    )
+    outdf[ColName.EAF] = outdf[ColName.EAF].astype(ColType.EAF)
+    return outdf
+
+
+def munge_maf(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Munge minor allele frequency column.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with minor allele frequency column.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with munged minor allele frequency column.
+    """
+    pre_n = df.shape[0]
+    outdf = df.copy()
+    outdf[ColName.MAF] = pd.to_numeric(outdf[ColName.MAF], errors="coerce")
+    outdf = outdf[outdf[ColName.MAF].notnull()]
+    outdf[ColName.MAF] = outdf[ColName.MAF].apply(lambda x: 1 - x if x > 0.5 else x)
+    outdf = outdf[
+        (outdf[ColName.MAF] >= ColRange.MAF_MIN)
+        & (outdf[ColName.MAF] <= ColRange.MAF_MAX)
+    ]
+    after_n = outdf.shape[0]
+    logger.debug(
+        f"Remove {pre_n - after_n} rows because of invalid minor allele frequency."
+    )
+    outdf[ColName.MAF] = outdf[ColName.MAF].astype(ColType.MAF)
+    return outdf

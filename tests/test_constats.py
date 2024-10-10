@@ -1,7 +1,5 @@
 """Tests for the constants module."""
 
-import pytest
-
 from mafm.constants import CHROM_LIST, ColName
 
 
@@ -25,7 +23,19 @@ def test_colname_sumstat_columns():
     -------
     None
     """
-    expected_cols = ["CHR", "BP", "rsID", "EA", "NEA", "P", "BETA", "SE", "EAF", "MAF"]
+    expected_cols = [
+        "SNPID",
+        "CHR",
+        "BP",
+        "rsID",
+        "EA",
+        "NEA",
+        "EAF",
+        "MAF",
+        "BETA",
+        "SE",
+        "P",
+    ]
     assert ColName.sumstat_cols == expected_cols
 
 
