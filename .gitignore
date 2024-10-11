@@ -114,3 +114,5 @@ ENV/
 site/
 
 tmp/
+
+*.ipynb

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.8] (2024-10-10)
+
+### Added
+- load ld matrix and ld map
+- munge sumstat
+- example data
 
 ## [0.0.7] (2024-10-09)
 
