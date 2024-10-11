@@ -1,6 +1,8 @@
 """Functions for processing summary statistics data."""
 
+import gzip
 import logging
+from typing import Optional
 
 import pandas as pd
 
@@ -555,3 +557,77 @@ def munge_maf(df: pd.DataFrame) -> pd.DataFrame:
     )
     outdf[ColName.MAF] = outdf[ColName.MAF].astype(ColType.MAF)
     return outdf
+
+
+def load_sumstats(
+    filename: str,
+    sep: Optional[str] = None,
+    nrows: Optional[int] = None,
+    skiprows: int = 0,
+    comment: Optional[str] = None,
+    gzipped: Optional[bool] = None,
+) -> pd.DataFrame:
+    """
+    Load summary statistics from a file.
+
+    Parameters
+    ----------
+    filename : str
+        The path to the file containing the summary statistics.
+        The header must contain the column names: CHR, BP, EA, NEA, EAF, BETA, SE, P.
+    sep : str, optional
+        The delimiter to use. If None, the delimiter is inferred from the file.
+    nrows : int, optional
+        Number of rows to read. If None, all rows are read.
+    skiprows : int, default 0
+        Number of lines to skip at the start of the file.
+    comment : str, optional
+        Character to split comments in the file.
+    gzipped : bool, optional
+        Whether the file is gzipped. If None, it is inferred from the file extension.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing the loaded summary statistics.
+
+    Notes
+    -----
+    The function infers the delimiter if not provided and handles gzipped files.
+    """
+    # determine whether the file is gzipped
+    if gzipped is None:
+        gzipped = filename.endswith("gz")
+
+    # read the first line of the file to determine the separator
+    if sep is None:
+        if gzipped:
+            f = gzip.open(filename, "rt")
+
+        else:
+            f = open(filename, "rt")
+        if skiprows > 0:
+            for _ in range(skiprows):
+                f.readline()
+        line = f.readline()
+        f.close()
+        if "\t" in line:
+            sep = "\t"
+        elif "," in line:
+            sep = ","
+        else:
+            sep = " "
+    logger.debug(f"File {filename} is gzipped: {gzipped}")
+    logger.debug(f"Separator is {sep}")
+    logger.debug(f"loading data from {filename}")
+    # determine the separator, automatically if not specified
+    sumstats = pd.read_csv(
+        filename,
+        sep=sep,
+        nrows=nrows,
+        skiprows=skiprows,
+        comment=comment,
+        compression="gzip" if gzipped else None,
+    )
+    sumstats = munge(sumstats)
+    return sumstats

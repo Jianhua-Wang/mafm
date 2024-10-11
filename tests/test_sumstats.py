@@ -1,4 +1,6 @@
-from unittest.mock import patch
+import gzip
+import io
+from unittest.mock import mock_open, patch
 
 import numpy as np
 import pandas as pd
@@ -8,6 +10,7 @@ from mafm.constants import ColName
 from mafm.sumstats import (
     check_mandatory_cols,
     get_significant_snps,
+    load_sumstats,
     make_SNPID_unique,
     munge,
     rm_col_allna,
@@ -78,7 +81,7 @@ def test_get_significant_snps_empty_dataframe():
         get_significant_snps(df)
 
 
-def test_get_significant_snps_sorting(sample_df):
+def test_get_significant_snps_sorting(sample_df: pd.DataFrame):
     result = get_significant_snps(sample_df, pvalue_threshold=1e-7)
     assert list(result[ColName.SNPID]) == ["rs1", "rs5", "rs3"]
     assert list(result[ColName.P]) == [1e-9, 1e-8, 1e-7]
@@ -124,7 +127,7 @@ def sample_df1():
     )
 
 
-def test_make_SNPID_unique_basic(sample_df1):
+def test_make_SNPID_unique_basic(sample_df1: pd.DataFrame):
     result = make_SNPID_unique(sample_df1)
     assert len(result) == 2
     assert list(result[ColName.SNPID]) == ["1-12345-A-G", "2-67890-A-G"]
@@ -132,7 +135,7 @@ def test_make_SNPID_unique_basic(sample_df1):
     assert result.iloc[1][ColName.P] == 1e-8
 
 
-def test_make_SNPID_unique_no_remove_duplicates(sample_df1):
+def test_make_SNPID_unique_no_remove_duplicates(sample_df1: pd.DataFrame):
     result = make_SNPID_unique(sample_df1, remove_duplicates=False)
     assert len(result) == 4
     assert list(result[ColName.SNPID]) == [
@@ -176,7 +179,7 @@ def test_make_SNPID_unique_empty_dataframe():
 
 @patch("logging.Logger.debug")
 @patch("logging.Logger.warning")
-def test_make_SNPID_unique_logging(mock_warning, mock_debug, sample_df1):
+def test_make_SNPID_unique_logging(mock_warning, mock_debug, sample_df1: pd.DataFrame):
     result = make_SNPID_unique(sample_df1)
     mock_debug.assert_any_call("Number of duplicated SNPs: 2")
     mock_debug.assert_any_call("Unique SNPIDs have been successfully created.")
@@ -304,7 +307,7 @@ def test_munge_function_calls(
     mock_munge_chr,
     mock_rm_col_allna,
     mock_check_mandatory_cols,
-    sample_df3,
+    sample_df3: pd.DataFrame,
 ):
     # Set up all mocks to return the input dataframe
     for mock in [
@@ -344,38 +347,40 @@ def test_munge_function_calls(
     assert isinstance(result, pd.DataFrame)
 
 
-def test_munge_sorting(sample_df3):
+def test_munge_sorting(sample_df3: pd.DataFrame):
     result = munge(sample_df3)
     assert list(result[ColName.CHR]) == [1, 2, 3, 23]
     assert list(result[ColName.BP]) == [1000, 2000, 3000, 4000]
 
 
-def test_munge_maf_column(sample_df3):
+def test_munge_maf_column(sample_df3: pd.DataFrame):
     result = munge(sample_df3)
     assert ColName.MAF in result.columns
 
 
-def test_munge_without_rsid(sample_df3):
+def test_munge_without_rsid(sample_df3: pd.DataFrame):
     sample_df3 = sample_df3.drop(columns=[ColName.RSID])
     result = munge(sample_df3)
     assert ColName.RSID in result.columns
 
 
 @patch("mafm.sumstats.check_mandatory_cols")
-def test_munge_missing_mandatory_cols(mock_check_mandatory_cols, sample_df3):
+def test_munge_missing_mandatory_cols(
+    mock_check_mandatory_cols, sample_df3: pd.DataFrame
+):
     mock_check_mandatory_cols.side_effect = ValueError("Missing mandatory columns")
     with pytest.raises(ValueError, match="Missing mandatory columns"):
         munge(sample_df3)
 
 
-def test_munge_input_unmodified(sample_df3):
+def test_munge_input_unmodified(sample_df3: pd.DataFrame):
     original_df = sample_df3.copy()
     munge(sample_df3)
     pd.testing.assert_frame_equal(sample_df3, original_df)
 
 
 @patch("mafm.sumstats.rm_col_allna")
-def test_munge_remove_allna_columns(mock_rm_col_allna, sample_df3):
+def test_munge_remove_allna_columns(mock_rm_col_allna, sample_df3: pd.DataFrame):
     mock_rm_col_allna.return_value = sample_df3.drop(columns=[ColName.RSID])
     result = munge(sample_df3)
     assert ColName.RSID in result.columns
@@ -417,11 +422,11 @@ def sample_df4():
     )
 
 
-def test_check_mandatory_cols_all_present(sample_df4):
+def test_check_mandatory_cols_all_present(sample_df4: pd.DataFrame):
     check_mandatory_cols(sample_df4)  # Should not raise an exception
 
 
-def test_check_mandatory_cols_missing(sample_df4):
+def test_check_mandatory_cols_missing(sample_df4: pd.DataFrame):
     df_missing = sample_df4.drop(columns=[ColName.CHR])
     with pytest.raises(
         ValueError, match=f"Missing mandatory columns: {{'{ColName.CHR}'}}"
@@ -429,19 +434,19 @@ def test_check_mandatory_cols_missing(sample_df4):
         check_mandatory_cols(df_missing)
 
 
-def test_check_mandatory_cols_multiple_missing(sample_df4):
+def test_check_mandatory_cols_multiple_missing(sample_df4: pd.DataFrame):
     df_missing = sample_df4.drop(columns=[ColName.CHR, ColName.BP])
     with pytest.raises(ValueError, match="Missing mandatory columns:"):
         check_mandatory_cols(df_missing)
 
 
-def test_check_mandatory_cols_input_unmodified(sample_df4):
+def test_check_mandatory_cols_input_unmodified(sample_df4: pd.DataFrame):
     original_df = sample_df4.copy()
     check_mandatory_cols(sample_df4)
     pd.testing.assert_frame_equal(sample_df4, original_df)
 
 
-def test_rm_col_allna_no_removal(sample_df4):
+def test_rm_col_allna_no_removal(sample_df4: pd.DataFrame):
     result = rm_col_allna(sample_df4)
     pd.testing.assert_frame_equal(result, sample_df4)
 
@@ -493,3 +498,92 @@ def test_rm_col_allna_logging(mock_debug):
     df = pd.DataFrame({"A": [1, 2, 3], "B": [np.nan, np.nan, np.nan], "C": [4, 5, 6]})
     rm_col_allna(df)
     mock_debug.assert_called_once_with("Remove column B because it is all NA.")
+
+
+@pytest.fixture
+def sample_data():
+    return "CHR\tBP\tEA\tNEA\tEAF\tBETA\tSE\tP\n1\t1000\tA\tG\t0.5\t0.1\t0.05\t0.01\n2\t2000\tC\tT\t0.3\t-0.2\t0.06\t0.001\n"
+
+
+@pytest.fixture
+def create_test_file(tmp_path, sample_data):
+    def _create_file(filename, content=sample_data, gzipped=False):
+        file_path = tmp_path / filename
+        if gzipped:
+            with gzip.open(file_path, "wt") as f:
+                f.write(content)
+        else:
+            with open(file_path, "w") as f:
+                f.write(content)
+        return str(file_path)
+
+    return _create_file
+
+
+def test_load_sumstats_basic(create_test_file):
+    file_path = create_test_file("test.txt")
+    df = load_sumstats(file_path)
+    assert isinstance(df, pd.DataFrame)
+    assert list(df.columns) == ColName.sumstat_cols
+    assert len(df) == 2
+
+
+def test_load_sumstats_gzipped(create_test_file):
+    file_path = create_test_file("test.txt.gz", gzipped=True)
+    df = load_sumstats(file_path)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+
+
+def test_load_sumstats_custom_sep(create_test_file):
+    content = "CHR,BP,EA,NEA,EAF,BETA,SE,P\n1,1000,A,G,0.5,0.1,0.05,0.01\n"
+    file_path = create_test_file("test_comma.txt", content=content)
+    df = load_sumstats(file_path, sep=",")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+
+
+def test_load_sumstats_nrows(create_test_file):
+    file_path = create_test_file("test.txt")
+    df = load_sumstats(file_path, nrows=1)
+    assert len(df) == 1
+
+
+def test_load_sumstats_skiprows(create_test_file):
+    content = "# Comment line\nCHR\tBP\tEA\tNEA\tEAF\tBETA\tSE\tP\n1\t1000\tA\tG\t0.5\t0.1\t0.05\t0.01\n"
+    file_path = create_test_file("test_skip.txt", content=content)
+    df = load_sumstats(file_path, skiprows=1)
+    assert len(df) == 1
+
+
+def test_load_sumstats_comment(create_test_file):
+    content = "CHR\tBP\tEA\tNEA\tEAF\tBETA\tSE\tP\n1\t1000\tA\tG\t0.5\t0.1\t0.05\t0.01\n# Comment line\n2\t2000\tC\tT\t0.3\t-0.2\t0.06\t0.001\n"
+    file_path = create_test_file("test_comment.txt", content=content)
+    df = load_sumstats(file_path, comment="#")
+    assert len(df) == 2
+
+
+def test_load_sumstats_infer_sep(create_test_file):
+    content = "CHR,BP,EA,NEA,EAF,BETA,SE,P\n1,1000,A,G,0.5,0.1,0.05,0.01\n"
+    file_path = create_test_file("test_infer.txt", content=content)
+    df = load_sumstats(file_path)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+
+
+def test_load_sumstats_missing_columns(create_test_file):
+    content = "CHR\tBP\tEA\tNEA\tEAF\tBETA\tSE\n1\t1000\tA\tG\t0.5\t0.1\t0.05\n"
+    file_path = create_test_file("test_missing.txt", content=content)
+    with pytest.raises(ValueError):
+        load_sumstats(file_path)
+
+
+def test_load_sumstats_empty_file(create_test_file):
+    file_path = create_test_file("empty.txt", content="")
+    with pytest.raises(pd.errors.EmptyDataError):
+        load_sumstats(file_path)
+
+
+def test_load_sumstats_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        load_sumstats("nonexistent_file.txt")

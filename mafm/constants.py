@@ -17,6 +17,10 @@ class ColName:
     SE = "SE"
     EAF = "EAF"
 
+    # ld map columns
+    A1 = "A1"
+    A2 = "A2"
+
     # optional columns
     MAF = "MAF"
     N = "N"
@@ -51,6 +55,7 @@ class ColName:
     mandatory_cols = [CHR, BP, EA, NEA, EAF, BETA, SE, P]
     sumstat_cols = [SNPID, CHR, BP, RSID, EA, NEA, EAF, MAF, BETA, SE, P]
     loci_cols = [CHR, START, END, LEAD_SNP, LEAD_SNP_P, LEAD_SNP_BP]
+    map_cols = [CHR, BP, A1, A2]
 
 
 # only support autosomes
