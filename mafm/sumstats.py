@@ -4,6 +4,7 @@ import gzip
 import logging
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 from .constants import ColName, ColRange, ColType
@@ -209,8 +210,8 @@ def make_SNPID_unique(
         dup_tail = dup_tail.str.replace("-0", "")
         df[ColName.SNPID] = df[ColName.SNPID] + dup_tail
 
-    logging.debug("Unique SNPIDs have been successfully created.")
-    logging.debug(f"Total unique SNPs: {len(df)}")
+    logger.debug("Unique SNPIDs have been successfully created.")
+    logger.debug(f"Total unique SNPs: {len(df)}")
 
     return df
 
@@ -559,8 +560,38 @@ def munge_maf(df: pd.DataFrame) -> pd.DataFrame:
     return outdf
 
 
+def sort_alleles(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Sort EA and NEA in alphabetical order. Change the sign of beta if EA is not sorted as the first allele.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame with allele columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with sorted allele columns.
+    """
+    outdf = df.copy()
+    outdf[["sorted_a1", "sorted_a2"]] = np.sort(
+        outdf[[ColName.EA, ColName.NEA]], axis=1
+    )
+    outdf[ColName.BETA] = np.where(
+        outdf[ColName.EA] == outdf["sorted_a1"],
+        outdf[ColName.BETA],
+        -outdf[ColName.BETA],
+    )
+    outdf[ColName.EA] = outdf["sorted_a1"]
+    outdf[ColName.NEA] = outdf["sorted_a2"]
+    outdf.drop(columns=["sorted_a1", "sorted_a2"], inplace=True)
+    return outdf
+
+
 def load_sumstats(
     filename: str,
+    if_sort_alleles: bool = True,
     sep: Optional[str] = None,
     nrows: Optional[int] = None,
     skiprows: int = 0,
@@ -575,6 +606,8 @@ def load_sumstats(
     filename : str
         The path to the file containing the summary statistics.
         The header must contain the column names: CHR, BP, EA, NEA, EAF, BETA, SE, P.
+    if_sort_alleles : bool, default True
+        Whether to sort alleles in alphabetical order.
     sep : str, optional
         The delimiter to use. If None, the delimiter is inferred from the file.
     nrows : int, optional
@@ -630,4 +663,7 @@ def load_sumstats(
         compression="gzip" if gzipped else None,
     )
     sumstats = munge(sumstats)
+    logger.info(f"Loaded {len(sumstats)} rows sumstats from {filename}")
+    if if_sort_alleles:
+        sumstats = sort_alleles(sumstats)
     return sumstats

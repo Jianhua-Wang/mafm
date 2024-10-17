@@ -28,7 +28,9 @@ def test_read_lower_triangle_valid_file(tmp_path):
     expected_matrix = np.array([[1, 0, 0], [2, 3, 0], [4, 5, 6]], dtype=float)
 
     result = read_lower_triangle(file_path)
-    assert np.array_equal(result, expected_matrix), "The lower triangle matrix is not as expected."
+    assert np.array_equal(
+        result, expected_matrix
+    ), "The lower triangle matrix is not as expected."
 
 
 def test_read_lower_triangle_invalid_file(tmp_path):
@@ -49,7 +51,9 @@ def test_read_lower_triangle_invalid_file(tmp_path):
     file_path = tmp_path / "invalid_lower_triangle.txt"
     file_path.write_text(file_content)
 
-    with pytest.raises(ValueError, match="Invalid number of elements in row 2. Expected 2, got 3."):
+    with pytest.raises(
+        ValueError, match="Invalid number of elements in row 2. Expected 2, got 3."
+    ):
         read_lower_triangle(file_path)
 
 
@@ -62,7 +66,9 @@ def test_read_lower_triangle_file_not_found():
     AssertionError
         If the function does not raise the expected FileNotFoundError.
     """
-    with pytest.raises(FileNotFoundError, match="The file 'non_existent_file.txt' does not exist."):
+    with pytest.raises(
+        FileNotFoundError, match="The file 'non_existent_file.txt' does not exist."
+    ):
         read_lower_triangle("non_existent_file.txt")
 
 
@@ -95,7 +101,9 @@ def test_lower_triangle_to_symmetric_valid_file(tmp_path):
     )
 
     result = load_ld_matrix(file_path)
-    assert np.array_equal(result, expected_matrix), "The symmetric matrix is not as expected."
+    assert np.array_equal(
+        result, expected_matrix
+    ), "The symmetric matrix is not as expected."
 
 
 def test_lower_triangle_to_symmetric_invalid_file(tmp_path):
@@ -116,7 +124,9 @@ def test_lower_triangle_to_symmetric_invalid_file(tmp_path):
     file_path = tmp_path / "invalid_lower_triangle.txt"
     file_path.write_text(file_content)
 
-    with pytest.raises(ValueError, match="Invalid number of elements in row 2. Expected 2, got 3."):
+    with pytest.raises(
+        ValueError, match="Invalid number of elements in row 2. Expected 2, got 3."
+    ):
         load_ld_matrix(file_path)
 
 
@@ -162,7 +172,9 @@ def test_read_lower_triangle_custom_delimiter(tmp_path):
     expected_matrix = np.array([[1, 0, 0], [2, 3, 0], [4, 5, 6]], dtype=float)
 
     result = read_lower_triangle(file_path, delimiter=",")
-    assert np.array_equal(result, expected_matrix), "The lower triangle matrix is not as expected."
+    assert np.array_equal(
+        result, expected_matrix
+    ), "The lower triangle matrix is not as expected."
 
 
 def test_read_lower_triangle_invalid_number_of_elements(tmp_path):
@@ -183,7 +195,9 @@ def test_read_lower_triangle_invalid_number_of_elements(tmp_path):
     file_path = tmp_path / "invalid_number_of_elements.txt"
     file_path.write_text(file_content)
 
-    with pytest.raises(ValueError, match="Invalid number of elements in row 2. Expected 2, got 3."):
+    with pytest.raises(
+        ValueError, match="Invalid number of elements in row 2. Expected 2, got 3."
+    ):
         read_lower_triangle(file_path)
 
 
@@ -237,7 +251,9 @@ def test_load_ld_map_missing_columns(tmp_path):
     file_path = tmp_path / "missing_columns_map.txt"
     file_path.write_text(file_content)
 
-    with pytest.raises(ValueError, match=r"Missing columns in the input file: \['A2'\]"):
+    with pytest.raises(
+        ValueError, match=r"Missing columns in the input file: \['A2'\]"
+    ):
         load_ld_map(file_path)
 
 
@@ -316,7 +332,9 @@ def test_load_ld_valid_files(tmp_path):
 
     result = load_ld(ld_path, map_path)
     pd.testing.assert_frame_equal(result["map"], expected_map_df)  # type: ignore
-    assert np.array_equal(result["r"], expected_ld_matrix), "The LD matrix is not as expected."
+    assert np.array_equal(
+        result["r"], expected_ld_matrix
+    ), "The LD matrix is not as expected."
 
 
 def test_load_ld_mismatched_files(tmp_path):
