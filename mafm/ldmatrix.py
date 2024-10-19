@@ -70,7 +70,11 @@ def read_lower_triangle(file_path: str, delimiter: str = "\t") -> np.ndarray:
     """
     try:
         with open(file_path, "r") as file:
-            rows = [list(map(float, line.strip().split(delimiter))) for line in file if line.strip()]
+            rows = [
+                list(map(float, line.strip().split(delimiter)))
+                for line in file
+                if line.strip()
+            ]
     except FileNotFoundError:
         raise FileNotFoundError(f"The file '{file_path}' does not exist.")
 
@@ -82,7 +86,9 @@ def read_lower_triangle(file_path: str, delimiter: str = "\t") -> np.ndarray:
 
     for i, row in enumerate(rows):
         if len(row) != i + 1:
-            raise ValueError(f"Invalid number of elements in row {i + 1}. Expected {i + 1}, got {len(row)}.")
+            raise ValueError(
+                f"Invalid number of elements in row {i + 1}. Expected {i + 1}, got {len(row)}."
+            )
         lower_triangle[i, : len(row)] = row
 
     return lower_triangle
@@ -191,7 +197,9 @@ def load_ld_map(map_path: str, delimiter: str = "\t") -> pd.DataFrame:
         after_n = outdf.shape[0]
         logger.debug(f"Remove {pre_n - after_n} rows because of invalid {col}.")
     outdf = outdf[outdf[ColName.A1] != outdf[ColName.A2]]
-    outdf = make_SNPID_unique(outdf, col_ea=ColName.A1, col_nea=ColName.A2, remove_duplicates=False)
+    outdf = make_SNPID_unique(
+        outdf, col_ea=ColName.A1, col_nea=ColName.A2, remove_duplicates=False
+    )
     outdf.reset_index(drop=True, inplace=True)
     return outdf
 
@@ -245,7 +253,9 @@ def sort_alleles(ld: LDMatrix) -> LDMatrix:
     return LDMatrix(ld_map, ld_df)
 
 
-def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, method: str = "null-mle") -> float:
+def estimate_s_rss(
+    z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, method: str = "null-mle"
+) -> float:
     """
     Estimate s in the susie_rss Model Using Regularized LD.
 
@@ -291,7 +301,9 @@ def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, me
     eigvals, eigvecs = np.linalg.eigh(R)
 
     if np.any(eigvals < -r_tol):
-        logger.warning("The matrix R is not positive semidefinite. Negative eigenvalues are set to zero")
+        logger.warning(
+            "The matrix R is not positive semidefinite. Negative eigenvalues are set to zero"
+        )
     eigvals[eigvals < r_tol] = 0
 
     if n <= 1:
@@ -328,7 +340,9 @@ def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, me
 
     elif method == "null-pseudomle":
 
-        def pseudolikelihood(s: float, z: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray) -> float:
+        def pseudolikelihood(
+            s: float, z: np.ndarray, eigvals: np.ndarray, eigvecs: np.ndarray
+        ) -> float:
             precision = eigvecs @ (eigvecs.T / ((1 - s) * eigvals + s))
             postmean = np.zeros_like(z)
             postvar = np.zeros_like(z)
@@ -351,7 +365,9 @@ def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, me
     return s  # type: ignore
 
 
-def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1e-8) -> Dict[str, Any]:
+def kriging_rss(
+    z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1e-8
+) -> Dict[str, Any]:
     """
     Compute Distribution of z-scores of Variant j Given Other z-scores, and Detect Possible Allele Switch Issue.
 
@@ -400,9 +416,9 @@ def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1
     condmean = np.zeros_like(z)
     condvar = np.zeros_like(z)
     for i in range(len(z)):
-        condmean[i] = -(1 / precision[i, i]) * precision[i, :i].dot(z[:i]) - (1 / precision[i, i]) * precision[
-            i, i + 1 :
-        ].dot(z[i + 1 :])
+        condmean[i] = -(1 / precision[i, i]) * precision[i, :i].dot(z[:i]) - (
+            1 / precision[i, i]
+        ) * precision[i, i + 1 :].dot(z[i + 1 :])
         condvar[i] = 1 / precision[i, i]
     z_std_diff = (z - condmean) / np.sqrt(condvar)
 
@@ -414,12 +430,16 @@ def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1
 
     # Compute likelihood
     sd_mtx = np.outer(np.sqrt(condvar), a_grid)
-    matrix_llik = stats.norm.logpdf(z[:, np.newaxis] - condmean[:, np.newaxis], scale=sd_mtx)
+    matrix_llik = stats.norm.logpdf(
+        z[:, np.newaxis] - condmean[:, np.newaxis], scale=sd_mtx
+    )
     lfactors = np.max(matrix_llik, axis=1)
     matrix_llik = matrix_llik - lfactors[:, np.newaxis]
 
     # Estimate weight using Gaussian Mixture Model
-    gmm = GaussianMixture(n_components=len(a_grid), covariance_type="diag", max_iter=1000)
+    gmm = GaussianMixture(
+        n_components=len(a_grid), covariance_type="diag", max_iter=1000
+    )
     gmm.fit(matrix_llik)
     w = gmm.weights_
 
@@ -427,7 +447,9 @@ def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1
     logl0mix = np.log(np.sum(np.exp(matrix_llik) * (w + 1e-15), axis=1)) + lfactors  # type: ignore
 
     # Compute numerators in likelihood ratios
-    matrix_llik = stats.norm.logpdf(z[:, np.newaxis] + condmean[:, np.newaxis], scale=sd_mtx)
+    matrix_llik = stats.norm.logpdf(
+        z[:, np.newaxis] + condmean[:, np.newaxis], scale=sd_mtx
+    )
     lfactors = np.max(matrix_llik, axis=1)
     matrix_llik = matrix_llik - lfactors[:, np.newaxis]
     logl1mix = np.log(np.sum(np.exp(matrix_llik) * (w + 1e-15), axis=1)) + lfactors  # type: ignore
@@ -461,7 +483,9 @@ def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1
     return {"plot": plt.gcf(), "conditional_dist": res}
 
 
-def load_ld(ld_path: str, map_path: str, delimiter: str = "\t", if_sort_alleles: bool = True) -> LDMatrix:
+def load_ld(
+    ld_path: str, map_path: str, delimiter: str = "\t", if_sort_alleles: bool = True
+) -> LDMatrix:
     """
     Read LD matrices and Variant IDs from files. Pair each matrix with its corresponding Variant IDs.
 

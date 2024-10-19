@@ -313,9 +313,9 @@ def test_load_ld_valid_files(tmp_path):
 
     expected_ld_matrix = np.array(
         [
-            [1, 0.1, 0.2],
-            [0.1, 1, 0.4],
-            [0.2, 0.4, 1],
+            [1, 0.1, -0.2],
+            [0.1, 1, -0.4],
+            [-0.2, -0.4, 1],
         ],
         dtype=np.float16,
     )
@@ -325,15 +325,15 @@ def test_load_ld_valid_files(tmp_path):
             "SNPID": ["1-1000-A-G", "1-2000-C-T", "2-3000-C-T"],
             "CHR": [1, 1, 2],
             "BP": [1000, 2000, 3000],
-            "A1": ["A", "C", "T"],
-            "A2": ["G", "T", "C"],
+            "A1": ["A", "C", "C"],
+            "A2": ["G", "T", "T"],
         }
     )
 
     result = load_ld(ld_path, map_path)
-    pd.testing.assert_frame_equal(result["map"], expected_map_df)  # type: ignore
+    pd.testing.assert_frame_equal(result.map, expected_map_df)  # type: ignore
     assert np.array_equal(
-        result["r"], expected_ld_matrix
+        result.r, expected_ld_matrix
     ), "The LD matrix is not as expected."
 
 
