@@ -101,13 +101,24 @@ def test_susie_rss_invalid_inputs():
         susie_rss(z=np.array([1.0, 2.0]), R=np.array([[1.0, 0.5], [0.5, 1.0]]), n=1)
 
     with pytest.raises(ValueError):
-        susie_rss(z=np.array([1.0, 2.0]), R=np.array([[1.0, 0.5, 0.3], [0.5, 1.0, 0.4], [0.3, 0.4, 1.0]]))
+        susie_rss(
+            z=np.array([1.0, 2.0]),
+            R=np.array([[1.0, 0.5, 0.3], [0.5, 1.0, 0.4], [0.3, 0.4, 1.0]]),
+        )
 
     with pytest.raises(ValueError):
-        susie_rss(bhat=np.array([1.0, 2.0]), shat=np.array([0.1]), R=np.array([[1.0, 0.5], [0.5, 1.0]]))
+        susie_rss(
+            bhat=np.array([1.0, 2.0]),
+            shat=np.array([0.1]),
+            R=np.array([[1.0, 0.5], [0.5, 1.0]]),
+        )
 
     with pytest.raises(ValueError):
-        susie_rss(bhat=np.array([1.0, 2.0]), shat=np.array([0.1, -0.1]), R=np.array([[1.0, 0.5], [0.5, 1.0]]))
+        susie_rss(
+            bhat=np.array([1.0, 2.0]),
+            shat=np.array([0.1, -0.1]),
+            R=np.array([[1.0, 0.5], [0.5, 1.0]]),
+        )
 
 
 def test_susie_rss_z_ld_weight():
