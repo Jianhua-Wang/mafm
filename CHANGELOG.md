@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.9] (2024-10-21)
+
+### Added
+- abf
+- susie
+- finemap
+
 ## [0.0.8] (2024-10-10)
 
 ### Added
