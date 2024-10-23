@@ -138,8 +138,8 @@ def load_ld_matrix(file_path: str, delimiter: str = "\t") -> np.ndarray:
     # Fill the diagonal with 1
     np.fill_diagonal(symmetric_matrix, 1)
 
-    # convert to float16
-    symmetric_matrix = symmetric_matrix.astype(np.float16)
+    # convert to float32
+    symmetric_matrix = symmetric_matrix.astype(np.float32)
     return symmetric_matrix
 
 

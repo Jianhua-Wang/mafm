@@ -97,7 +97,7 @@ def test_lower_triangle_to_symmetric_valid_file(tmp_path):
             [0.2, 0.4, 1, 0.6],
             [0.3, 0.5, 0.6, 1],
         ],
-        dtype=np.float16,
+        dtype=np.float32,
     )
 
     result = load_ld_matrix(file_path)
@@ -317,7 +317,7 @@ def test_load_ld_valid_files(tmp_path):
             [0.1, 1, -0.4],
             [-0.2, -0.4, 1],
         ],
-        dtype=np.float16,
+        dtype=np.float32,
     )
 
     expected_map_df = pd.DataFrame(
