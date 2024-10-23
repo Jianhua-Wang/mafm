@@ -10,8 +10,9 @@ __version__ = "0.0.9"
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format="%(name)s - %(message)s",
     datefmt="[%X]",
     handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
 )
+logging.getLogger("matplotlib").setLevel(logging.WARNING)

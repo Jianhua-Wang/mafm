@@ -327,7 +327,8 @@ class ToolManager:
         Runs a registered tool with the given arguments.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the ToolManager with an empty dictionary of tools."""
         self.tools: Dict[str, ExternalTool] = {}
 
     def register_tool(self, name: str, default_path: Optional[str] = None) -> None:

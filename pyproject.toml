@@ -26,6 +26,8 @@ scipy = ">=1.7.3"
 rich = ">=12.4.0"
 scikit-learn = ">=1.5.2"
 matplotlib = ">=3.9.2"
+numba = "^0.60.0"
+tqdm = "^4.66.5"
 
 [tool.poetry.dev-dependencies]
 black = ">=23.9.1"
