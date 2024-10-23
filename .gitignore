@@ -116,3 +116,5 @@ site/
 tmp/
 
 *.ipynb
+
+exampledata/

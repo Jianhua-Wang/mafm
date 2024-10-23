@@ -43,13 +43,12 @@ class ColName:
     COJO_SE = "COJO_SE"
 
     # posterior probability
-    PP_FINEMAP = "PP_FINEMAP"
-    PP_ABF = "PP_ABF"
-    PP_PAINTOR = "PP_PAINTOR"
-    PP_CAVIARBF = "PP_CAVIARBF"
-    PP_SUSIE = "PP_SUSIE"
-    PP_POLYFUN_FINEMAP = "PP_POLYFUN_FINEMAP"
-    PP_POLYFUN_SUSIE = "PP_POLYFUN_SUSIE"
+    PIP = "PIP"
+    FINEMAP = "FINEMAP"
+    ABF = "ABF"
+    SUSIE = "SUSIE"
+    # PP_POLYFUN_FINEMAP = "PP_POLYFUN_FINEMAP"
+    # PP_POLYFUN_SUSIE = "PP_POLYFUN_SUSIE"
 
     # ordered columns
     mandatory_cols = [CHR, BP, EA, NEA, EAF, BETA, SE, P]
