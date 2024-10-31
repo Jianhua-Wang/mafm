@@ -2,7 +2,6 @@
 
 import logging
 import os
-from calendar import c
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -12,6 +11,7 @@ import pandas as pd
 import toml
 
 from mafm.constants import ColName
+from mafm.credibleset import CredibleSet
 from mafm.ldmatrix import load_ld
 from mafm.sumstats import load_sumstats
 
@@ -32,6 +32,12 @@ class FmInput:
         Map file.
     sumstats : pd.DataFrame
         Sumstats file.
+    original_sumstats : pd.DataFrame
+        Original sumstats file.
+    popu : str
+        Population code.
+    sample_size : int
+        Sample size.
     """
 
     def __init__(
@@ -94,85 +100,6 @@ class FmInput:
         logger.info(
             "Intersected the Variant IDs in the LD matrix and the sumstats file. "
             f"Number of common Variant IDs: {len(intersec_index)}"
-        )
-
-
-@dataclass
-class CredibleSet:
-    """Class representing credible sets from one fine-mapping tool.
-
-    Attributes
-    ----------
-    tool : str
-        The name of the fine-mapping tool.
-    n_cs : int
-        The number of credible sets.
-    coverage : float
-        The coverage of the credible sets.
-    lead_snps : List[str]
-        List of lead SNPs.
-    snps : List[List[str]]
-        List of SNPs for each credible set.
-    cs_sizes : List[int]
-        Sizes of each credible set.
-    pips : pd.Series
-        Posterior inclusion probabilities.
-    parameters : Dict
-        Additional parameters used by the fine-mapping tool.
-    """
-
-    tool: str
-    parameters: Dict
-    coverage: float
-    n_cs: int
-    cs_sizes: List[int]
-    lead_snps: List[str]
-    snps: List[List[str]]
-    pips: pd.Series
-
-    def to_dict(self) -> Dict:
-        """Convert to dictionary for TOML storage (excluding pips).
-
-        Returns
-        -------
-        Dict
-            A dictionary representation of the CredibleSet excluding pips.
-        """
-        return {
-            "tool": self.tool,
-            "n_cs": self.n_cs,
-            "coverage": self.coverage,
-            "lead_snps": self.lead_snps,
-            "snps": self.snps,
-            "cs_sizes": self.cs_sizes,
-            "parameters": self.parameters,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict, pips: pd.Series) -> "CredibleSet":
-        """Create CredibleSet from dictionary and pips.
-
-        Parameters
-        ----------
-        data : Dict
-            A dictionary containing the data to initialize the CredibleSet.
-        pips : pd.Series
-            Posterior inclusion probabilities.
-
-        Returns
-        -------
-        CredibleSet
-            An instance of CredibleSet initialized with the provided data and pips.
-        """
-        return cls(
-            tool=data["tool"],
-            n_cs=data["n_cs"],
-            coverage=data["coverage"],
-            lead_snps=data["lead_snps"],
-            snps=data["snps"],
-            cs_sizes=data["cs_sizes"],
-            parameters=data["parameters"],
-            pips=pips,
         )
 
 
@@ -330,7 +257,8 @@ class FmOutput:
         return cls(sumstat=sumstat, credible_sets=credible_sets, r=r, map_df=map_df)
 
     def summary(self) -> Dict:
-        """Generate summary of all fine-mapping results.
+        """
+        Generate summary of all fine-mapping results.
 
         Returns
         -------
