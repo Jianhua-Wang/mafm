@@ -60,9 +60,7 @@ def get_significant_snps(
     required_columns = {ColName.P, ColName.SNPID}
     missing_columns = required_columns - set(df.columns)
     if missing_columns:
-        raise KeyError(
-            f"The following required columns are missing from the DataFrame: {missing_columns}"
-        )
+        raise KeyError(f"The following required columns are missing from the DataFrame: {missing_columns}")
 
     sig_df = df.loc[df[ColName.P] <= pvalue_threshold].copy()
 
@@ -72,9 +70,7 @@ def get_significant_snps(
             sig_df = df.loc[df[ColName.P] == min_pvalue].copy()
             if sig_df.empty:
                 raise ValueError("The DataFrame is empty. No SNPs available to select.")
-            logging.debug(
-                f"Using the most significant SNP: {sig_df.iloc[0][ColName.SNPID]}"
-            )
+            logging.debug(f"Using the most significant SNP: {sig_df.iloc[0][ColName.SNPID]}")
             logging.debug(f"p-value: {sig_df.iloc[0][ColName.P]}")
         else:
             raise ValueError("No significant SNPs found.")
@@ -157,9 +153,7 @@ def make_SNPID_unique(
     }
     missing_columns = required_columns - set(sumstat.columns)
     if missing_columns:
-        raise KeyError(
-            f"The following required columns are missing from the DataFrame: {missing_columns}"
-        )
+        raise KeyError(f"The following required columns are missing from the DataFrame: {missing_columns}")
 
     if sumstat.empty:
         raise ValueError("The input DataFrame is empty.")
@@ -174,13 +168,7 @@ def make_SNPID_unique(
 
     # Create unique SNPID
     df[ColName.SNPID] = (
-        df[col_chr].astype(str)
-        + "-"
-        + df[col_bp].astype(str)
-        + "-"
-        + allele_df[col_ea]
-        + "-"
-        + allele_df[col_nea]
+        df[col_chr].astype(str) + "-" + df[col_bp].astype(str) + "-" + allele_df[col_ea] + "-" + allele_df[col_nea]
     )
 
     # move SNPID to the first column
@@ -360,10 +348,7 @@ def munge_chr(df: pd.DataFrame) -> pd.DataFrame:
     outdf[ColName.CHR] = outdf[ColName.CHR].replace(["X", "x"], 23)
     outdf[ColName.CHR] = pd.to_numeric(outdf[ColName.CHR], errors="coerce")
     outdf = outdf[outdf[ColName.CHR].notnull()]
-    outdf = outdf[
-        (outdf[ColName.CHR] >= ColRange.CHR_MIN)
-        & (outdf[ColName.CHR] <= ColRange.CHR_MAX)
-    ]
+    outdf = outdf[(outdf[ColName.CHR] >= ColRange.CHR_MIN) & (outdf[ColName.CHR] <= ColRange.CHR_MAX)]
     after_n = outdf.shape[0]
     logger.debug(f"Remove {pre_n - after_n} rows because of invalid chromosome.")
     outdf[ColName.CHR] = outdf[ColName.CHR].astype(ColType.CHR)
@@ -388,9 +373,7 @@ def munge_bp(df: pd.DataFrame) -> pd.DataFrame:
     outdf = df[df[ColName.BP].notnull()].copy()
     outdf[ColName.BP] = pd.to_numeric(outdf[ColName.BP], errors="coerce")
     outdf = outdf[outdf[ColName.BP].notnull()]
-    outdf = outdf[
-        (outdf[ColName.BP] > ColRange.BP_MIN) & (outdf[ColName.BP] < ColRange.BP_MAX)
-    ]
+    outdf = outdf[(outdf[ColName.BP] > ColRange.BP_MIN) & (outdf[ColName.BP] < ColRange.BP_MAX)]
     after_n = outdf.shape[0]
     logger.debug(f"Remove {pre_n - after_n} rows because of invalid position.")
     outdf[ColName.BP] = outdf[ColName.BP].astype(ColType.BP)
@@ -441,9 +424,7 @@ def munge_pvalue(df: pd.DataFrame) -> pd.DataFrame:
     pre_n = outdf.shape[0]
     outdf[ColName.P] = pd.to_numeric(outdf[ColName.P], errors="coerce")
     outdf = outdf[outdf[ColName.P].notnull()]
-    outdf = outdf[
-        (outdf[ColName.P] > ColRange.P_MIN) & (outdf[ColName.P] < ColRange.P_MAX)
-    ]
+    outdf = outdf[(outdf[ColName.P] > ColRange.P_MIN) & (outdf[ColName.P] < ColRange.P_MAX)]
     after_n = outdf.shape[0]
     logger.debug(f"Remove {pre_n - after_n} rows because of invalid p-value.")
     outdf[ColName.P] = outdf[ColName.P].astype(ColType.P)
@@ -517,14 +498,9 @@ def munge_eaf(df: pd.DataFrame) -> pd.DataFrame:
     outdf = df.copy()
     outdf[ColName.EAF] = pd.to_numeric(outdf[ColName.EAF], errors="coerce")
     outdf = outdf[outdf[ColName.EAF].notnull()]
-    outdf = outdf[
-        (outdf[ColName.EAF] >= ColRange.EAF_MIN)
-        & (outdf[ColName.EAF] <= ColRange.EAF_MAX)
-    ]
+    outdf = outdf[(outdf[ColName.EAF] >= ColRange.EAF_MIN) & (outdf[ColName.EAF] <= ColRange.EAF_MAX)]
     after_n = outdf.shape[0]
-    logger.debug(
-        f"Remove {pre_n - after_n} rows because of invalid effect allele frequency."
-    )
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid effect allele frequency.")
     outdf[ColName.EAF] = outdf[ColName.EAF].astype(ColType.EAF)
     return outdf
 
@@ -548,14 +524,9 @@ def munge_maf(df: pd.DataFrame) -> pd.DataFrame:
     outdf[ColName.MAF] = pd.to_numeric(outdf[ColName.MAF], errors="coerce")
     outdf = outdf[outdf[ColName.MAF].notnull()]
     outdf[ColName.MAF] = outdf[ColName.MAF].apply(lambda x: 1 - x if x > 0.5 else x)
-    outdf = outdf[
-        (outdf[ColName.MAF] >= ColRange.MAF_MIN)
-        & (outdf[ColName.MAF] <= ColRange.MAF_MAX)
-    ]
+    outdf = outdf[(outdf[ColName.MAF] >= ColRange.MAF_MIN) & (outdf[ColName.MAF] <= ColRange.MAF_MAX)]
     after_n = outdf.shape[0]
-    logger.debug(
-        f"Remove {pre_n - after_n} rows because of invalid minor allele frequency."
-    )
+    logger.debug(f"Remove {pre_n - after_n} rows because of invalid minor allele frequency.")
     outdf[ColName.MAF] = outdf[ColName.MAF].astype(ColType.MAF)
     return outdf
 
@@ -575,13 +546,16 @@ def sort_alleles(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with sorted allele columns.
     """
     outdf = df.copy()
-    outdf[["sorted_a1", "sorted_a2"]] = np.sort(
-        outdf[[ColName.EA, ColName.NEA]], axis=1
-    )
+    outdf[["sorted_a1", "sorted_a2"]] = np.sort(outdf[[ColName.EA, ColName.NEA]], axis=1)
     outdf[ColName.BETA] = np.where(
         outdf[ColName.EA] == outdf["sorted_a1"],
         outdf[ColName.BETA],
         -outdf[ColName.BETA],
+    )
+    outdf[ColName.EAF] = np.where(
+        outdf[ColName.EA] == outdf["sorted_a1"],
+        outdf[ColName.EAF],
+        1 - outdf[ColName.EAF],
     )
     outdf[ColName.EA] = outdf["sorted_a1"]
     outdf[ColName.NEA] = outdf["sorted_a2"]

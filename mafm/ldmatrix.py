@@ -1,14 +1,12 @@
 """Functions for reading and converting lower triangle matrices."""
 
 import logging
-import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import stats
-from scipy.linalg import eigh
 from scipy.optimize import minimize_scalar
 from sklearn.mixture import GaussianMixture
 
@@ -138,8 +136,8 @@ def load_ld_matrix(file_path: str, delimiter: str = "\t") -> np.ndarray:
     # Fill the diagonal with 1
     np.fill_diagonal(symmetric_matrix, 1)
 
-    # convert to float32
-    symmetric_matrix = symmetric_matrix.astype(np.float32)
+    # convert to float16
+    symmetric_matrix = symmetric_matrix.astype(np.float16)
     return symmetric_matrix
 
 
@@ -296,7 +294,7 @@ def estimate_s_rss(
     """
     # Check and process input arguments z, R
     z = np.where(np.isnan(z), 0, z)
-
+    R = R.astype(np.float32)
     # Compute eigenvalues and eigenvectors
     eigvals, eigvecs = np.linalg.eigh(R)
 
@@ -398,6 +396,7 @@ def kriging_rss(
     z = np.where(np.isnan(z), 0, z)
 
     # Compute eigenvalues and eigenvectors
+    R = R.astype(np.float32)
     eigvals, eigvecs = np.linalg.eigh(R)
     eigvals = eigvals[::-1]
     eigvecs = eigvecs[:, ::-1]
