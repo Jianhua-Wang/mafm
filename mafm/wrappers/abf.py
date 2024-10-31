@@ -1,18 +1,19 @@
 """Warpper of ABF fine-mapping method."""
 
 import logging
+from typing import List
 
 import numpy as np
 import pandas as pd
 
 from mafm.constants import ColName
+from mafm.credibleset import CredibleSet, combine_creds
+from mafm.mafm import FmInput
 
 logger = logging.getLogger("ABF")
 
 
-def run_abf(
-    sumstats: pd.DataFrame, var_prior: float = 0.2, max_causal: int = 1, **kwargs
-) -> pd.Series:
+def run_abf_single(input: FmInput, max_causal: int = 1, coverage: float = 0.95, var_prior: float = 0.2) -> CredibleSet:
     """
     Run ABF.
 
@@ -29,31 +30,102 @@ def run_abf(
 
     Parameters
     ----------
-    sumstats : pd.DataFrame
-        Summary statistics.
+    input : FmInput
+        Input data.
+    max_causal : int, optional
+        Maximum number of causal variants, by default 1, only support 1.
+    coverage : float, optional
+        Coverage, by default 0.95
     var_prior : float, optional
         Variance prior, by default 0.2, usually set to 0.15 for quantitative traits
         and 0.2 for binary traits.
-    max_causal : int, optional
-        Maximum number of causal variants, by default 1
+
 
     Returns
     -------
-    pd.Series
-        The result of ABF.
+    CredibleSet
+        Credible set.
     """
     if max_causal > 1:
-        logger.warning("ABF only support single causal variant.")
+        logger.warning("ABF only support single causal variant. max_causal is set to 1.")
         max_causal = 1
-    df = sumstats.copy()
+    logger.info(f"Running ABF for {input.prefix} with var_prior={var_prior}")  # type: ignore
+    df = input.original_sumstats.copy()
     df["W2"] = var_prior**2
-    df["SNP_BF"] = np.sqrt(
-        (df[ColName.SE] ** 2 / (df[ColName.SE] ** 2 + df["W2"]))
-    ) * np.exp(
-        df["W2"]
-        / (df[ColName.BETA] ** 2 + df["W2"])
-        * (df[ColName.BETA] ** 2 / df[ColName.SE] ** 2)
-        / 2
+    df["SNP_BF"] = np.sqrt((df[ColName.SE] ** 2 / (df[ColName.SE] ** 2 + df["W2"]))) * np.exp(
+        df["W2"] / (df[ColName.BETA] ** 2 + df["W2"]) * (df[ColName.BETA] ** 2 / df[ColName.SE] ** 2) / 2
     )
-    df[ColName.PP_ABF] = df["SNP_BF"] / df["SNP_BF"].sum()
-    return pd.Series(data=df[ColName.PP_ABF].values, index=df[ColName.SNPID].tolist())
+    df[ColName.PIP] = df["SNP_BF"] / df["SNP_BF"].sum()
+    pips = pd.Series(data=df[ColName.PIP].values, index=df[ColName.SNPID].tolist(), name=ColName.ABF)
+    ordering = np.argsort(pips.to_numpy())[::-1]
+    idx = np.where(np.cumsum(pips.to_numpy()[ordering]) > coverage)[0][0]
+    cs_snps = pips.index[ordering][: (idx + 1)].to_list()
+    lead_snps = str(df.loc[df[df[ColName.SNPID].isin(cs_snps)][ColName.P].idxmin(), ColName.SNPID])
+    logger.info(f"Fished ABF for {input.prefix}")  # type: ignore
+    logger.info("N of credible set: 1")
+    logger.info(f"Credible set size: {len(cs_snps)}")
+    return CredibleSet(
+        tool=ColName.ABF,
+        n_cs=1,
+        coverage=coverage,
+        lead_snps=[lead_snps],
+        snps=[cs_snps],
+        cs_sizes=[len(cs_snps)],
+        pips=pips,
+        parameters={"var_prior": var_prior},
+    )
+
+
+def run_abf_multi(
+    inputs: List[FmInput],
+    max_causal: int = 1,
+    coverage: float = 0.95,
+    var_prior: float = 0.2,
+    combine_cred: str = "union",
+    combine_pip: str = "max",
+    jaccard_threshold: float = 0.1,
+) -> CredibleSet:
+    """
+    Run ABF for multiple datasets.
+
+    Run ABF for each dataset in the input list. Then combine the results.
+
+    Parameters
+    ----------
+    inputs : List[FmInput]
+        List of input data.
+    max_causal : int, optional
+        Maximum number of causal variants, by default 1, only support 1.
+    coverage : float, optional
+        Coverage, by default 0.95
+    var_prior : float, optional
+        Variance prior, by default 0.2, usually set to 0.15 for quantitative traits
+        and 0.2 for binary traits.
+        combine_cred : str, optional
+        Method to combine credible sets, by default "union".
+        Options: "union", "intersection", "cluster", "fgfm".
+        "union":        Union of all credible sets to form a merged credible set.
+        "intersection": Frist merge the credible sets from the same tool,
+                        then take the intersection of all merged credible sets.
+                        no credible set will be returned if no common SNPs found.
+        "cluster":      Merge credible sets with Jaccard index > 0.1.
+    combine_pip : str, optional
+        Method to combine PIPs, by default "max".
+        Options: "max", "min", "mean", "meta".
+        "meta": PIP_meta = 1 - prod(1 - PIP_i), where i is the index of tools,
+                PIP_i = 0 when the SNP is not in the credible set of the tool.
+        "max":  Maximum PIP value for each SNP across all tools.
+        "min":  Minimum PIP value for each SNP across all tools.
+        "mean": Mean PIP value for each SNP across all tools.
+    jaccard_threshold : float, optional
+        Jaccard index threshold for the "cluster" method, by default 0.1.
+
+    Returns
+    -------
+    CredibleSet
+        Credible sets for ABF.
+    """
+    out_cred = []
+    for input in inputs:
+        out_cred.append(run_abf_single(input, max_causal, coverage, var_prior))
+    return combine_creds(out_cred, combine_cred, combine_pip, jaccard_threshold)
