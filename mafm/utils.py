@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, TypeVar
+from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 logger = logging.getLogger("Utils")
 
@@ -77,13 +77,9 @@ def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
                         shutil.rmtree(temp_dir)
                         logger.debug(f"Removed temporary directory: {temp_dir}")
                     except Exception as cleanup_error:
-                        logger.warning(
-                            f"Failed to remove temporary directory '{temp_dir}': {cleanup_error}"
-                        )
+                        logger.warning(f"Failed to remove temporary directory '{temp_dir}': {cleanup_error}")
                 else:
-                    logger.debug(
-                        f"Retaining temporary directory '{temp_dir}' for inspection due to logging level."
-                    )
+                    logger.debug(f"Retaining temporary directory '{temp_dir}' for inspection due to logging level.")
                 return result
 
         return wrapper  # type: ignore
@@ -127,9 +123,7 @@ def check_r_package(package_name: str) -> Optional[None]:
     # Check R version
     try:
         r_version_cmd = "R --version"
-        r_version_output = subprocess.check_output(
-            r_version_cmd, shell=True, universal_newlines=True
-        )
+        r_version_output = subprocess.check_output(r_version_cmd, shell=True, universal_newlines=True)
         version_match = re.search(r"R version (\d+\.\d+\.\d+)", r_version_output)
         if version_match:
             r_version = version_match.group(1)
@@ -215,9 +209,7 @@ class ExternalTool:
         if os.path.exists(path):
             self.custom_path = path
         else:
-            raise FileNotFoundError(
-                f"Custom path for {self.name} does not exist: {path}"
-            )
+            raise FileNotFoundError(f"Custom path for {self.name} does not exist: {path}")
 
     def get_path(self) -> str:
         """
@@ -248,7 +240,7 @@ class ExternalTool:
 
         raise FileNotFoundError(f"Could not find {self.name} executable")
 
-    def run(self, command: List[str], output_file_path: Optional[str] = None) -> None:
+    def run(self, command: List[str], output_file_path: Optional[Union[str, List[str]]] = None) -> None:
         """
         Execute a command line instruction, log the output, and handle errors.
 
@@ -260,7 +252,7 @@ class ExternalTool:
         ----------
         command : List[str]
             The command line instruction to be executed.
-        output_file_path : str, optional
+        output_file_path : Optional[Union[str, List[str]]], optional
             The expected output file path. If provided, the function will check
             if this file exists after command execution.
 
@@ -273,26 +265,25 @@ class ExternalTool:
 
         Examples
         --------
-        >>> execute_command("echo 'Hello, World!'")
-        >>> execute_command("ls -l", "/tmp/output.txt")
+        >>> tool_manager.get_tool("finemap").run(["--help"])
         """
         command = [self.get_path()] + command
         try:
             # Run the command and capture output
             logger.debug(f"Run command: {command}")
-            result = subprocess.run(
-                command, shell=True, check=True, text=True, capture_output=True
-            )
+            result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
 
             # Log stdout and stderr
             logger.debug(f"Command stdout:\n{result.stdout}")
             logger.debug(f"Command stderr:\n{result.stderr}")
 
             # Check for output file if path is provided
-            if output_file_path and not os.path.exists(output_file_path):
-                raise FileNotFoundError(
-                    f"Expected output file not found: {output_file_path}"
-                )
+            if output_file_path:
+                if isinstance(output_file_path, str):
+                    output_file_path = [output_file_path]
+                for path in output_file_path:
+                    if not os.path.exists(path):
+                        raise FileNotFoundError(f"Expected output file not found: {path}")
 
         except subprocess.CalledProcessError as e:
             # Log error details
@@ -387,9 +378,7 @@ class ToolManager:
             raise KeyError(f"Tool {name} is not registered")
         return self.tools[name]
 
-    def run_tool(
-        self, name: str, args: List[str], output_file_path: Optional[str] = None
-    ) -> None:
+    def run_tool(self, name: str, args: List[str], output_file_path: Optional[Union[str, List[str]]] = None) -> None:
         """
         Run a registered tool with the given arguments.
 
@@ -399,7 +388,7 @@ class ToolManager:
             The name of the registered tool.
         args : List[str]
             The arguments to pass to the tool.
-        output_file_path : str, optional
+        output_file_path : Optional[Union[str, List[str]]], optional
             The expected output file path. If provided, the function will check
             if this file exists after command execution.
 

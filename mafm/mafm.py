@@ -61,6 +61,7 @@ class FmInput:
             Sample size.
 
         """
+        self.prefix = prefix
         self.ld_path = f"{prefix}.ld"
         self.map_path = f"{prefix}.ldmap"
         self.sumstats_path = f"{prefix}.sumstats"
