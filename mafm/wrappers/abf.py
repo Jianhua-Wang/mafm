@@ -49,7 +49,7 @@ def run_abf_single(input: FmInput, max_causal: int = 1, coverage: float = 0.95, 
     if max_causal > 1:
         logger.warning("ABF only support single causal variant. max_causal is set to 1.")
         max_causal = 1
-    logger.info(f"Running ABF for {input.prefix} with var_prior={var_prior}")  # type: ignore
+    logger.info(f"Running ABF for {input.prefix} with var_prior={var_prior}")
     df = input.original_sumstats.copy()
     df["W2"] = var_prior**2
     df["SNP_BF"] = np.sqrt((df[ColName.SE] ** 2 / (df[ColName.SE] ** 2 + df["W2"]))) * np.exp(
@@ -61,7 +61,7 @@ def run_abf_single(input: FmInput, max_causal: int = 1, coverage: float = 0.95, 
     idx = np.where(np.cumsum(pips.to_numpy()[ordering]) > coverage)[0][0]
     cs_snps = pips.index[ordering][: (idx + 1)].to_list()
     lead_snps = str(df.loc[df[df[ColName.SNPID].isin(cs_snps)][ColName.P].idxmin(), ColName.SNPID])
-    logger.info(f"Fished ABF for {input.prefix}")  # type: ignore
+    logger.info(f"Fished ABF for {input.prefix}")
     logger.info("N of credible set: 1")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
