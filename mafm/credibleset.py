@@ -203,7 +203,8 @@ def combine_creds(
     else:
         raise ValueError(f"Method {combine_cred} is not supported.")
     merged_pips = combine_pips([cred.pips for cred in creds], combine_pip)
-    paras["method"] = combine_cred
+    paras["combine_cred"] = combine_cred
+    paras["combine_pip"] = combine_pip
     merged = CredibleSet(
         tool=creds[0].tool,
         n_cs=len(merged_snps),
