@@ -552,11 +552,12 @@ def sort_alleles(df: pd.DataFrame) -> pd.DataFrame:
         outdf[ColName.BETA],
         -outdf[ColName.BETA],
     )
-    outdf[ColName.EAF] = np.where(
-        outdf[ColName.EA] == outdf["sorted_a1"],
-        outdf[ColName.EAF],
-        1 - outdf[ColName.EAF],
-    )
+    if ColName.EAF in outdf.columns:
+        outdf[ColName.EAF] = np.where(
+            outdf[ColName.EA] == outdf["sorted_a1"],
+            outdf[ColName.EAF],
+            1 - outdf[ColName.EAF],
+        )
     outdf[ColName.EA] = outdf["sorted_a1"]
     outdf[ColName.NEA] = outdf["sorted_a2"]
     outdf.drop(columns=["sorted_a1", "sorted_a2"], inplace=True)

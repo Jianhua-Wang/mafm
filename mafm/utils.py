@@ -270,8 +270,8 @@ class ExternalTool:
         command = [self.get_path()] + command
         try:
             # Run the command and capture output
-            logger.debug(f"Run command: {command}")
-            result = subprocess.run(command, shell=True, check=True, text=True, capture_output=True)
+            logger.debug(f"Run command: {' '.join(command)}")
+            result = subprocess.run(' '.join(command), shell=True, check=True, text=True, capture_output=True)
 
             # Log stdout and stderr
             logger.debug(f"Command stdout:\n{result.stdout}")
@@ -410,4 +410,5 @@ class ToolManager:
 
 
 tool_manager = ToolManager()
-tool_manager.register_tool("finemap", "bin/finemap")
+for tool in ["finemap", "metal"]:
+    tool_manager.register_tool(tool, f"bin/{tool}")
