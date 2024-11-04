@@ -62,14 +62,20 @@ class FmInput:
 
         """
         self.prefix = prefix
-        self.ld_path = f"{prefix}.ld"
         self.map_path = f"{prefix}.ldmap"
         self.sumstats_path = f"{prefix}.sumstats"
         self.sumstats = load_sumstats(self.sumstats_path, if_sort_alleles=True, **kwargs)
         self.original_sumstats = self.sumstats.copy()
         self.popu = popu
         self.sample_size = sample_size
-        if os.path.exists(self.ld_path) and os.path.exists(self.map_path):
+        if os.path.exists(self.map_path):
+            if os.path.exists(f"{prefix}.ld"):
+                self.ld_path = f"{prefix}.ld"
+            elif os.path.exists(f"{prefix}.ld.npz"):
+                self.ld_path = f"{prefix}.ld.npz"
+            else:
+                raise FileNotFoundError("LD matrix file not found.")
+
             ld = load_ld(self.ld_path, self.map_path, if_sort_alleles=True, **kwargs)
             self.r = ld.r
             self.map = ld.map

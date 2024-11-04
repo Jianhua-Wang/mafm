@@ -128,6 +128,8 @@ def load_ld_matrix(file_path: str, delimiter: str = "\t") -> np.ndarray:
             [0.2 , 0.4 , 1.  , 0.6 ],
             [0.3 , 0.5 , 0.6 , 1.  ]])
     """
+    if file_path.endswith(".npz"):
+        return np.load(file_path)["ld"]
     lower_triangle = read_lower_triangle(file_path, delimiter)
 
     # Create the symmetric matrix
