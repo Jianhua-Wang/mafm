@@ -5,11 +5,13 @@ import os
 import textwrap
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 from mafm.constants import ColName
+from mafm.ldmatrix import LDMatrix
 from mafm.mafm import FmInput
-from mafm.sumstats import load_sumstats, sort_alleles, munge
+from mafm.sumstats import load_sumstats, munge, sort_alleles
 from mafm.utils import io_in_tempdir, tool_manager
 
 logger = logging.getLogger("MAFM")
@@ -75,7 +77,7 @@ def run_metal(
 
     # Load METAL output
     sumstats = pd.read_csv(f"{out_file}1.txt", sep="\t")
-    sumstats.columns = [ColName.SNPID, ColName.EA, ColName.NEA, ColName.BETA, ColName.SE, ColName.P, 'Direction']
+    sumstats.columns = [ColName.SNPID, ColName.EA, ColName.NEA, ColName.BETA, ColName.SE, ColName.P, "Direction"]
     sumstats = sort_alleles(sumstats)
     sumstats.set_index(ColName.SNPID, inplace=True)
 
@@ -151,3 +153,79 @@ def meta_sumstats(
     return munge(all_sumstat)
 
 
+def meta_lds(
+    inputs: list[FmInput],
+) -> LDMatrix:
+    """
+    Perform meta-analysis of LD matrices.
+
+    Parameters
+    ----------
+    inputs : list[FmInput]
+        List of input data.
+
+    Returns
+    -------
+    LDMatrix
+        Meta-analysis LD matrix.
+
+    """
+    # 1. Get unique variants across all studies
+    variant_dfs = [input.map for input in inputs]
+    ld_matrices = [input.r for input in inputs]
+    sample_sizes = [input.sample_size for input in inputs]
+
+    all_variants = pd.concat([df[["SNPID"]] for df in variant_dfs]).SNPID.unique()
+    variant_to_index = {snp: idx for idx, snp in enumerate(all_variants)}
+    n_variants = len(all_variants)
+
+    # 2. Initialize arrays using numpy operations
+    merged_ld = np.zeros((n_variants, n_variants))
+    weight_matrix = np.zeros((n_variants, n_variants))
+
+    # 3. Process each study
+    for ld_mat, variants_df, sample_size in zip(ld_matrices, variant_dfs, sample_sizes):
+        # Get indices in the master matrix
+        study_snps = variants_df["SNPID"].values
+        study_indices = np.array([variant_to_index[snp] for snp in study_snps])
+
+        # Create index meshgrid for faster indexing
+        idx_i, idx_j = np.meshgrid(study_indices, study_indices)
+
+        # Update matrices using vectorized operations
+        merged_ld[idx_i, idx_j] += ld_mat * sample_size
+        weight_matrix[idx_i, idx_j] += sample_size
+
+    # 4. Compute weighted average
+    mask = weight_matrix != 0
+    merged_ld[mask] /= weight_matrix[mask]
+
+    # 5. Prepare output variant information
+    # Get complete variant information from the first occurrence of each variant
+    merged_variants = pd.concat(variant_dfs).drop_duplicates(subset="SNPID", keep="first")
+    merged_variants = merged_variants.set_index("SNPID").loc[all_variants].reset_index()
+    return LDMatrix(merged_variants, merged_ld)
+
+
+def meta_analysis(
+    inputs: list[FmInput],
+    tool: str,
+) -> None:
+    """
+    Perform meta-analysis of summary statistics and LD matrices.
+
+    Parameters
+    ----------
+    inputs : list[FmInput]
+        List of input data.
+    tool : str
+        Meta-analysis tool.
+        You can choose from 'metal', 'metasoft'.
+
+    Returns
+    -------
+    None
+
+    """
+    meta_sumstat = meta_sumstats(inputs, tool)
+    meta_ld = meta_lds(inputs)
