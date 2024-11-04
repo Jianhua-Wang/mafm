@@ -1,0 +1,153 @@
+"""Meta analysis of multi-ancestry gwas data."""
+
+import logging
+import os
+import textwrap
+from typing import Optional
+
+import pandas as pd
+
+from mafm.constants import ColName
+from mafm.mafm import FmInput
+from mafm.sumstats import load_sumstats, sort_alleles, munge
+from mafm.utils import io_in_tempdir, tool_manager
+
+logger = logging.getLogger("MAFM")
+
+
+@io_in_tempdir("./tmp/metal")
+def run_metal(
+    inputs: list[FmInput],
+    temp_dir: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Run METAL for meta-analysis.
+
+    Parameters
+    ----------
+    inputs : list[FmInput]
+        List of input data.
+    temp_dir : Optional[str], optional
+        Temporary directory, by default None.
+
+    Returns
+    -------
+    pd.DataFrame
+        Meta-analysis summary statistics.
+
+    """
+    logger.info(f"Running METAL for {len(inputs)} datasets")
+    logger.info(f"Temp dir: {temp_dir}")
+
+    metal_describe = """
+    MARKER   SNPID
+    DEFAULT  %i
+    ALLELE   EA   NEA
+    FREQ     EAF
+    EFFECT   BETA
+    STDERR   SE
+
+    PROCESS %s
+    """
+    all_metal_describe = []
+    for i, input in enumerate(inputs):
+        sumstat = input.original_sumstats[
+            [ColName.SNPID, ColName.EA, ColName.NEA, ColName.EAF, ColName.BETA, ColName.SE]
+        ]
+        sample_size = input.sample_size
+        sumstat.to_csv(f"{temp_dir}/study{i}.sumstats", sep="\t", index=False)
+        all_metal_describe.append(metal_describe % (sample_size, f"{temp_dir}/study{i}.sumstats"))
+    all_metal_describe = "\n".join(all_metal_describe)
+    out_file = f"{temp_dir}/metal_out"
+    meta_script = f"""
+    SCHEME   STDERR
+
+    {all_metal_describe}
+
+    OUTFILE {out_file} .txt
+    ANALYZE"""
+    with open(f"{temp_dir}/metal.metal", "w") as f:
+        f.write(textwrap.dedent(meta_script))
+
+    # Run METAL
+    cmd = [f"{temp_dir}/metal.metal"]
+    tool_manager.run_tool("metal", cmd, output_file_path=f"{out_file}1.txt")
+
+    # Load METAL output
+    sumstats = pd.read_csv(f"{out_file}1.txt", sep="\t")
+    sumstats.columns = [ColName.SNPID, ColName.EA, ColName.NEA, ColName.BETA, ColName.SE, ColName.P, 'Direction']
+    sumstats = sort_alleles(sumstats)
+    sumstats.set_index(ColName.SNPID, inplace=True)
+
+    return sumstats[[ColName.BETA, ColName.SE, ColName.P]]
+
+
+def meta_sumstats(
+    inputs: list[FmInput],
+    tool: str,
+) -> pd.DataFrame:
+    """
+    Perform meta-analysis of summary statistics.
+
+    Parameters
+    ----------
+    inputs : list[FmInput]
+        List of input data.
+    tool : str
+        Meta-analysis tool.
+        You can choose from 'metal', 'metasoft'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Meta-analysis summary statistics.
+
+    """
+    # concatenate input sumstats and meta EAF
+    all_sumstat = []
+    ith = 1
+    for input in inputs:
+        sumstat = input.original_sumstats
+        sumstat = sumstat[[ColName.SNPID, ColName.CHR, ColName.BP, ColName.EA, ColName.NEA]]
+        all_sumstat.append(sumstat)
+        ith += 1
+    all_sumstat = pd.concat(all_sumstat, axis=0)
+    all_sumstat.drop_duplicates(subset=[ColName.SNPID], inplace=True)
+    all_sumstat.set_index(ColName.SNPID, inplace=True)
+    eaf_df = pd.DataFrame(index=all_sumstat.index)
+    n_sum = sum([input.sample_size for input in inputs])
+    weights = [input.sample_size / n_sum for input in inputs]
+    for i, input in enumerate(inputs):
+        df = input.original_sumstats.copy()
+        df.set_index(ColName.SNPID, inplace=True)
+        eaf_df[f"EAF_{i}"] = df[ColName.EAF] * weights[i]
+
+    all_sumstat["EAF_META"] = eaf_df.sum(axis=1)
+
+    if tool == "metal":
+        meta_res = run_metal(inputs)
+    elif tool == "metasoft":
+        raise NotImplementedError("METASOFT is not implemented yet.")
+    else:
+        raise ValueError(f"Unsupported meta-analysis tool: {tool}")
+
+    all_sumstat["BETA_META"] = meta_res[ColName.BETA]
+    all_sumstat["SE_META"] = meta_res[ColName.SE]
+    all_sumstat["P_META"] = meta_res[ColName.P]
+    all_sumstat = all_sumstat[
+        [ColName.CHR, ColName.BP, ColName.EA, ColName.NEA, "EAF_META", "BETA_META", "SE_META", "P_META"]
+    ]
+    all_sumstat.columns = [
+        ColName.CHR,
+        ColName.BP,
+        ColName.EA,
+        ColName.NEA,
+        ColName.EAF,
+        ColName.BETA,
+        ColName.SE,
+        ColName.P,
+    ]
+    all_sumstat.reset_index(inplace=True)
+    return munge(all_sumstat)
+
+
