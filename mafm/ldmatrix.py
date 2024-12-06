@@ -36,6 +36,16 @@ class LDMatrix:
         """
         self.map = map_df
         self.r = r
+        self.__check_length()
+
+    def __repr__(self):
+        """Return a string representation of the LDMatrix object."""
+        return f"LDMatrix(map={self.map.shape}, r={self.r.shape})"
+
+    def __check_length(self):
+        """Check if the number of rows in the map file matches the number of rows in the LD matrix."""
+        if len(self.map) != len(self.r):
+            raise ValueError("The number of rows in the map file does not match the number of rows in the LD matrix.")
 
 
 def read_lower_triangle(file_path: str, delimiter: str = "\t") -> np.ndarray:
@@ -118,7 +128,8 @@ def load_ld_matrix(file_path: str, delimiter: str = "\t") -> np.ndarray:
             [0.3 , 0.5 , 0.6 , 1.  ]])
     """
     if file_path.endswith(".npz"):
-        return np.load(file_path)["ld"]
+        ld_file_key = np.load(file_path).files[0]
+        return np.load(file_path)[ld_file_key]
     lower_triangle = read_lower_triangle(file_path, delimiter)
 
     # Create the symmetric matrix
@@ -251,6 +262,9 @@ def load_ld(ld_path: str, map_path: str, delimiter: str = "\t", if_sort_alleles:
     map_path : str
         Path to the input text file containing the Variant IDs.
     delimiter : str, optional
+        TODO: Support for npz files.
+        TODO: Support for plink bin4 format.
+        TODO: Support for ldstore bcor.
         Delimiter used in the input file (default is tab).
     if_sort_alleles : bool, optional
         Sort alleles in the LD map in alphabetical order and change the sign of the LD matrix if the alleles are swapped
