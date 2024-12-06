@@ -69,6 +69,10 @@ class Locus:
         self.popu = popu
         self.cohort = cohort
         self.sample_size = sample_size
+        self.chrom = sumstats[ColName.CHR].iloc[0]
+        self.start = sumstats[ColName.BP].min()
+        self.end = sumstats[ColName.BP].max()
+        self.locus_id = f"{popu}_{cohort}:chr{self.chrom}_{self.start}-{self.end}"
         if ld:
             self.ld = ld
             if if_intersect:
@@ -109,10 +113,10 @@ class Locus:
 
     def __repr__(self):
         """Return a string representation of the Locus object."""
-        return f"Locus(popu={self.popu}, cohort={self.cohort}, sample_size={self.sample_size}, sumstats={self.sumstats.shape}, ld={self.ld.r.shape})"
+        return f"Locus(locus_id={self.locus_id}, popu={self.popu}, cohort={self.cohort}, sample_size={self.sample_size}, sumstats={self.sumstats.shape}, ld={self.ld.r.shape})"
 
 
-def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = True, **kwargs) -> Locus:
+def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = False, **kwargs) -> Locus:
     """
     Load the input data of the fine-mapping analysis.
 
