@@ -2,38 +2,34 @@
 
 import logging
 import os
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
 import toml
+from regex import F
 
 from mafm.constants import ColName
 from mafm.credibleset import CredibleSet
-from mafm.ldmatrix import load_ld
+from mafm.ldmatrix import LDMatrix, load_ld
 from mafm.sumstats import load_sumstats
 
 logger = logging.getLogger("MAFM")
 
 
-class FmInput:
+class Locus:
     """
     Class for the input data of the fine-mapping analysis.
 
     Attributes
     ----------
-    prefix : str
-        Prefix of the input files.
-    r : np.ndarray
-        LD matrix.
-    map : pd.DataFrame
-        Map file.
     sumstats : pd.DataFrame
         Sumstats file.
     original_sumstats : pd.DataFrame
         Original sumstats file.
+    ld : LDMatrix
+        LD matrix.
     popu : str
         Population code.
     sample_size : int
@@ -42,51 +38,46 @@ class FmInput:
 
     def __init__(
         self,
-        prefix: str,
         popu: str,
+        cohort: str,
         sample_size: int,
-        if_intersect: bool = True,
-        **kwargs,
+        sumstats: pd.DataFrame,
+        ld: Optional[LDMatrix] = None,
+        if_intersect: bool = False,
     ):
         """
-        Initialize the FmInput object.
+        Initialize the Locus object.
 
         Parameters
         ----------
-        prefix : str
-            Prefix of the input files.
         popu : str
             Population code. e.g. "EUR". Choose from ["AFR", "AMR", "EAS", "EUR", "SAS"].
+        cohort : str
+            Cohort name.
         sample_size : int
             Sample size.
+        sumstats : pd.DataFrame
+            Sumstats file.
+        ld : LDMatrix, optional
+            LD matrix.
+        if_intersect : bool, optional
+            Whether to intersect the LD matrix and sumstats file, by default True.
 
         """
-        self.prefix = prefix
-        self.map_path = f"{prefix}.ldmap"
-        self.sumstats_path = f"{prefix}.sumstats"
-        self.sumstats = load_sumstats(self.sumstats_path, if_sort_alleles=True, **kwargs)
+        self.sumstats = sumstats
         self.original_sumstats = self.sumstats.copy()
         self.popu = popu
+        self.cohort = cohort
         self.sample_size = sample_size
-        if os.path.exists(self.map_path):
-            if os.path.exists(f"{prefix}.ld"):
-                self.ld_path = f"{prefix}.ld"
-            elif os.path.exists(f"{prefix}.ld.npz"):
-                self.ld_path = f"{prefix}.ld.npz"
-            else:
-                raise FileNotFoundError("LD matrix file not found.")
-
-            ld = load_ld(self.ld_path, self.map_path, if_sort_alleles=True, **kwargs)
-            self.r = ld.r
-            self.map = ld.map
+        if ld:
+            self.ld = ld
             if if_intersect:
-                self.__intersect()
+                self.intersect()
         else:
             logger.warning("LD matrix and map file not found. Can only run ABF method.")
-            self.r = np.ndarray([])
-            self.map = pd.DataFrame([])
+            self.ld = LDMatrix(pd.DataFrame(), np.array([]))
 
-    def __intersect(self):
+    def intersect(self):
         """
         Intersect the Variant IDs in the LD matrix and the sumstats file.
 
@@ -95,19 +86,60 @@ class FmInput:
         ValueError
             If no common Variant IDs found between the LD matrix and the sumstats file.
         """
-        intersec_index = self.map[self.map[ColName.SNPID].isin(self.sumstats[ColName.SNPID])].index
+        if self.ld is None:
+            raise ValueError("LD matrix not found.")
+        ldmap = self.ld.map.copy()
+        r = self.ld.r.copy()
+        # TODO: make sure the order of the Variant IDs in the LD matrix and the sumstats file are the same
+        intersec_index = ldmap[ldmap[ColName.SNPID].isin(self.sumstats[ColName.SNPID])].index
         if len(intersec_index) == 0:
             raise ValueError("No common Variant IDs found between the LD matrix and the sumstats file.")
         elif len(intersec_index) <= 10:
             logger.warning("Only a few common Variant IDs found between the LD matrix and the sumstats file(<= 10).")
-        self.map = self.map.loc[intersec_index]
-        self.r = self.r[intersec_index, :][:, intersec_index]
-        self.sumstats = self.sumstats.loc[self.sumstats[ColName.SNPID].isin(self.map[ColName.SNPID])]
+        ldmap = ldmap.loc[intersec_index]
+        ldmap = ldmap.reset_index(drop=True)
+        r = r[intersec_index, :][:, intersec_index]
+        self.sumstats = self.sumstats.loc[self.sumstats[ColName.SNPID].isin(ldmap[ColName.SNPID])]
         self.sumstats = self.sumstats.reset_index(drop=True)
+        self.ld = LDMatrix(ldmap, r)
         logger.info(
             "Intersected the Variant IDs in the LD matrix and the sumstats file. "
             f"Number of common Variant IDs: {len(intersec_index)}"
         )
+
+    def __repr__(self):
+        """Return a string representation of the Locus object."""
+        return f"Locus(popu={self.popu}, cohort={self.cohort}, sample_size={self.sample_size}, sumstats={self.sumstats.shape}, ld={self.ld.r.shape})"
+
+
+def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = True, **kwargs) -> Locus:
+    """
+    Load the input data of the fine-mapping analysis.
+
+    Parameters
+    ----------
+    input_path : str
+        Path to the input files.
+
+    Returns
+    -------
+    FmInput
+        Object containing the input data.
+
+    Raises
+    ------
+    ValueError
+        If the input files are not found.
+    """
+    sumstats = load_sumstats(f"{prefix}.sumstat", if_sort_alleles=True, **kwargs)
+    if os.path.exists(f"{prefix}.ld"):
+        ld = load_ld(f"{prefix}.ld", f"{prefix}.ldmap", if_sort_alleles=True, **kwargs)
+    elif os.path.exists(f"{prefix}.ld.npz"):
+        ld = load_ld(f"{prefix}.ld.npz", f"{prefix}.ldmap", if_sort_alleles=True, **kwargs)
+    else:
+        raise ValueError("LD matrix file not found.")
+
+    return Locus(popu, cohort, sample_size, sumstats=sumstats, ld=ld, if_intersect=if_intersect)
 
 
 class FmOutput:
@@ -204,7 +236,7 @@ class FmOutput:
         # Save LD matrix
         if self.r is not None:
             ld_file = f"{prefix}.ld.npz"
-            np.savez_compressed(ld_file, ld=self.r)
+            np.savez(ld_file, ld=self.r)
 
     @classmethod
     def load_results(cls, prefix: str) -> "FmOutput":
