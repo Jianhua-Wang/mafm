@@ -1,7 +1,6 @@
 """Meta analysis of multi-ancestry gwas data."""
 
 import logging
-import os
 import textwrap
 from typing import Optional
 
@@ -10,8 +9,8 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.ldmatrix import LDMatrix
-from mafm.mafm import FmInput
-from mafm.sumstats import load_sumstats, munge, sort_alleles
+from mafm.mafm import Locus
+from mafm.sumstats import munge, sort_alleles
 from mafm.utils import io_in_tempdir, tool_manager
 
 logger = logging.getLogger("MAFM")
@@ -19,11 +18,13 @@ logger = logging.getLogger("MAFM")
 
 @io_in_tempdir("./tmp/metal")
 def run_metal(
-    inputs: list[FmInput],
+    inputs: list[Locus],
     temp_dir: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Run METAL for meta-analysis.
+
+    TODO: replace metal with python implementation.
 
     Parameters
     ----------
@@ -85,7 +86,7 @@ def run_metal(
 
 
 def meta_sumstats(
-    inputs: list[FmInput],
+    inputs: list[Locus],
     tool: str,
 ) -> pd.DataFrame:
     """
@@ -116,6 +117,7 @@ def meta_sumstats(
     all_sumstat = pd.concat(all_sumstat, axis=0)
     all_sumstat.drop_duplicates(subset=[ColName.SNPID], inplace=True)
     all_sumstat.set_index(ColName.SNPID, inplace=True)
+    # meta EAF
     eaf_df = pd.DataFrame(index=all_sumstat.index)
     n_sum = sum([input.sample_size for input in inputs])
     weights = [input.sample_size / n_sum for input in inputs]
@@ -154,7 +156,7 @@ def meta_sumstats(
 
 
 def meta_lds(
-    inputs: list[FmInput],
+    inputs: list[Locus],
 ) -> LDMatrix:
     """
     Perform meta-analysis of LD matrices.
@@ -168,14 +170,18 @@ def meta_lds(
     -------
     LDMatrix
         Meta-analysis LD matrix.
-
     """
     # 1. Get unique variants across all studies
-    variant_dfs = [input.map for input in inputs]
-    ld_matrices = [input.r for input in inputs]
+    # TODO: meta allele frequency of LD reference, if exists
+    variant_dfs = [input.ld.map for input in inputs]
+    ld_matrices = [input.ld.r for input in inputs]
     sample_sizes = [input.sample_size for input in inputs]
 
-    all_variants = pd.concat([df[["SNPID"]] for df in variant_dfs]).SNPID.unique()
+    merged_variants = pd.concat(variant_dfs, ignore_index=True)
+    merged_variants.drop_duplicates(subset=["SNPID"], inplace=True)
+    merged_variants.sort_values(["CHR", "BP"], inplace=True)
+    merged_variants.reset_index(drop=True, inplace=True)
+    all_variants = merged_variants["SNPID"].values
     variant_to_index = {snp: idx for idx, snp in enumerate(all_variants)}
     n_variants = len(all_variants)
 
@@ -185,6 +191,9 @@ def meta_lds(
 
     # 3. Process each study
     for ld_mat, variants_df, sample_size in zip(ld_matrices, variant_dfs, sample_sizes):
+        # coverte float16 to float32, to avoid overflow
+        ld_mat = ld_mat.astype(np.float32)
+
         # Get indices in the master matrix
         study_snps = variants_df["SNPID"].values
         study_indices = np.array([variant_to_index[snp] for snp in study_snps])
@@ -202,15 +211,15 @@ def meta_lds(
 
     # 5. Prepare output variant information
     # Get complete variant information from the first occurrence of each variant
-    merged_variants = pd.concat(variant_dfs).drop_duplicates(subset="SNPID", keep="first")
-    merged_variants = merged_variants.set_index("SNPID").loc[all_variants].reset_index()
-    return LDMatrix(merged_variants, merged_ld)
+    # merged_variants = pd.concat(variant_dfs).drop_duplicates(subset="SNPID", keep="first")
+    # merged_variants = merged_variants.set_index("SNPID").loc[all_variants].reset_index()
+    return LDMatrix(merged_variants, merged_ld.astype(np.float16))
 
 
-def meta_analysis(
-    inputs: list[FmInput],
+def meta(
+    inputs: list[Locus],
     tool: str,
-) -> None:
+) -> Locus:
     """
     Perform meta-analysis of summary statistics and LD matrices.
 
@@ -224,8 +233,58 @@ def meta_analysis(
 
     Returns
     -------
-    None
+    Locus
+        Meta-analysis result.
 
     """
     meta_sumstat = meta_sumstats(inputs, tool)
     meta_ld = meta_lds(inputs)
+    sample_size = sum([input.sample_size for input in inputs])
+    popu = set()
+    for input in inputs:
+        for pop in input.popu.split(","):
+            popu.add(pop)
+    popu = ",".join(sorted(popu))
+    cohort = set()
+    for input in inputs:
+        for cohort_name in input.cohort.split(","):
+            cohort.add(cohort_name)
+    cohort = ",".join(sorted(cohort))
+
+    return Locus(popu, cohort, sample_size, sumstats=meta_sumstat, ld=meta_ld, if_intersect=True)
+
+def meta_by_population(
+    inputs: list[Locus],
+    tool: str,
+) -> dict[str, Locus]:
+    """
+    Perform meta-analysis of summary statistics and LD matrices within each population.
+
+    Parameters
+    ----------
+    inputs : list[FmInput]
+        List of input data.
+    tool : str
+        Meta-analysis tool.
+        You can choose from 'metal', 'metasoft'.
+
+    Returns
+    -------
+    Locus
+        Meta-analysis result.
+
+    """
+    meta_popu = {}
+    for input in inputs:
+        popu = input.popu
+        if popu not in meta_popu:
+            meta_popu[popu] = [input]
+        else:
+            meta_popu[popu].append(input)
+
+    for popu in meta_popu:
+        if len(meta_popu[popu]) > 1:
+            meta_popu[popu] = meta(meta_popu[popu], tool)
+        else:
+            meta_popu[popu] = meta_popu[popu][0]
+    return meta_popu
