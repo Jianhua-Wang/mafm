@@ -8,12 +8,12 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.credibleset import CredibleSet, combine_creds
-from mafm.mafm import FmInput
+from mafm.mafm import Locus
 
 logger = logging.getLogger("ABF")
 
 
-def run_abf_single(input: FmInput, max_causal: int = 1, coverage: float = 0.95, var_prior: float = 0.2) -> CredibleSet:
+def run_abf_single(input: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior: float = 0.2) -> CredibleSet:
     """
     Run ABF.
 
@@ -77,7 +77,7 @@ def run_abf_single(input: FmInput, max_causal: int = 1, coverage: float = 0.95, 
 
 
 def run_abf_multi(
-    inputs: List[FmInput],
+    inputs: List[Locus],
     max_causal: int = 1,
     coverage: float = 0.95,
     var_prior: float = 0.2,

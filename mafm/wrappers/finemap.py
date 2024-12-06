@@ -9,7 +9,7 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.credibleset import CredibleSet, combine_creds
-from mafm.mafm import FmInput
+from mafm.mafm import Locus
 from mafm.utils import io_in_tempdir, tool_manager
 
 logger = logging.getLogger("FINEMAP")
@@ -17,7 +17,7 @@ logger = logging.getLogger("FINEMAP")
 
 @io_in_tempdir("./tmp/FINEMAP")
 def run_finemap_single(
-    input: FmInput,
+    input: Locus,
     max_causal: int = 1,
     coverage: float = 0.95,
     n_iter: int = 100000,
@@ -159,7 +159,7 @@ def run_finemap_single(
 
 
 def run_finemap_multi(
-    inputs: list[FmInput],
+    inputs: list[Locus],
     max_causal: int = 1,
     coverage: float = 0.95,
     n_iter: int = 100000,
