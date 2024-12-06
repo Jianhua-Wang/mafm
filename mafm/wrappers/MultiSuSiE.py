@@ -235,13 +235,6 @@ def multisusie_rss(
             regression
         converged: boolean indicating whether the algorithm converged
 
-    TODO
-    ----
-        - Add command line interface
-        - Add more tests, probably based on tests used for SuSiER
-        - Make defaults match between sufficient statistic and summary statistic
-            functions
-        - Implement missing functionality for individual-level multisusie
     """
     # provide exactly one of (b_list and s_list) and z_list
     if (z_list is not None) & ((b_list is not None) or (s_list is not None)):
