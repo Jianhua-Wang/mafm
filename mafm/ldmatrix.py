@@ -47,6 +47,10 @@ class LDMatrix:
         if len(self.map) != len(self.r):
             raise ValueError("The number of rows in the map file does not match the number of rows in the LD matrix.")
 
+    def copy(self):
+        """Return a copy of the LDMatrix object."""
+        return LDMatrix(self.map.copy(), self.r.copy())
+
 
 def read_lower_triangle(file_path: str, delimiter: str = "\t") -> np.ndarray:
     """
@@ -138,8 +142,8 @@ def load_ld_matrix(file_path: str, delimiter: str = "\t") -> np.ndarray:
     # Fill the diagonal with 1
     np.fill_diagonal(symmetric_matrix, 1)
 
-    # convert to float16
-    symmetric_matrix = symmetric_matrix.astype(np.float16)
+    # convert to float32
+    symmetric_matrix = symmetric_matrix.astype(np.float32)
     return symmetric_matrix
 
 
