@@ -1,7 +1,7 @@
 """Quality control functions for MAFM data."""
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,10 +10,36 @@ from scipy import stats
 from scipy.optimize import minimize_scalar
 from sklearn.mixture import GaussianMixture
 
+from mafm.constants import ColName
+from mafm.Locus import Locus, intersect
+
 logger = logging.getLogger("QC")
 
 
-def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, method: str = "null-mle") -> float:
+def get_eigen(ldmatrix: np.ndarray) -> Dict[str, np.ndarray]:
+    """
+    Compute eigenvalues and eigenvectors of R.
+
+    TODO: accelerate with joblib
+
+    Parameters
+    ----------
+    R : np.ndarray
+        A p by p symmetric, positive semidefinite correlation matrix.
+
+    Returns
+    -------
+    dict
+        Dictionary containing eigenvalues and eigenvectors.
+    """
+    ldmatrix = ldmatrix.astype(np.float32)
+    eigvals, eigvecs = np.linalg.eigh(ldmatrix)
+    return {"eigvals": eigvals, "eigvecs": eigvecs}
+
+
+def estimate_s_rss(
+    locus: Locus, r_tol: float = 1e-8, method: str = "null-mle", eigvens: Optional[Dict[str, np.ndarray]] = None
+) -> float:
     """
     Estimate s in the susie_rss Model Using Regularized LD.
 
@@ -22,12 +48,8 @@ def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, me
 
     Parameters
     ----------
-    z : np.ndarray
-        A p-vector of z-scores.
-    R : np.ndarray
-        A p by p symmetric, positive semidefinite correlation matrix.
-    n : int
-        The sample size.
+    locus : Locus
+        Locus object.
     r_tol : float, default=1e-8
         Tolerance level for eigenvalue check of positive semidefinite matrix of R.
     method : str, default="null-mle"
@@ -37,29 +59,24 @@ def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, me
     -------
     float
         Estimated s value between 0 and 1 (or potentially > 1 for "null-partialmle").
-
-    Examples
-    --------
-    >>> np.random.seed(1)
-    >>> n, p = 500, 1000
-    >>> beta = np.zeros(p)
-    >>> beta[:4] = 0.01
-    >>> X = np.random.randn(n, p)
-    >>> X = (X - X.mean(axis=0)) / X.std(axis=0)
-    >>> y = X @ beta + np.random.randn(n)
-    >>> ss = univariate_regression(X, y)
-    >>> R = np.corrcoef(X.T)
-    >>> zhat = ss['betahat'] / ss['sebetahat']
-    >>> s1 = estimate_s_rss(zhat, R, n)
     """
+    # make sure the LD matrix and sumstats file are matched
+    input_locus = locus.copy()
+    input_locus = intersect(input_locus)
+    z = (input_locus.sumstats[ColName.BETA] / input_locus.sumstats[ColName.SE]).to_numpy()
+    n = input_locus.sample_size
     # Check and process input arguments z, R
     z = np.where(np.isnan(z), 0, z)
-    R = R.astype(np.float32)
-    # Compute eigenvalues and eigenvectors
-    eigvals, eigvecs = np.linalg.eigh(R)
+    if eigvens is not None:
+        eigvals = eigvens["eigvals"]
+        eigvecs = eigvens["eigvecs"]
+    else:
+        eigens = get_eigen(input_locus.ld.r)
+        eigvals = eigens["eigvals"]
+        eigvecs = eigens["eigvecs"]
 
     if np.any(eigvals < -r_tol):
-        logger.warning("The matrix R is not positive semidefinite. Negative eigenvalues are set to zero")
+        logger.warning("The LD matrix is not positive semidefinite. Negative eigenvalues are set to zero")
     eigvals[eigvals < r_tol] = 0
 
     if n <= 1:
@@ -119,7 +136,12 @@ def estimate_s_rss(z: np.ndarray, R: np.ndarray, n: int, r_tol: float = 1e-8, me
     return s  # type: ignore
 
 
-def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1e-8) -> Dict[str, Any]:
+def kriging_rss(
+    locus: Locus,
+    r_tol: float = 1e-8,
+    s: Optional[float] = None,
+    eigvens: Optional[Dict[str, np.ndarray]] = None,
+) -> pd.DataFrame:
     """
     Compute Distribution of z-scores of Variant j Given Other z-scores, and Detect Possible Allele Switch Issue.
 
@@ -128,30 +150,37 @@ def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1
 
     Parameters
     ----------
-    z : np.ndarray
-        A p-vector of z scores.
-    R : np.ndarray
-        A p by p symmetric, positive semidefinite correlation matrix.
-    n : int
-        The sample size.
-    s : float
-        An estimated s from estimate_s_rss function.
-    r_tol : float, default=1e-8
+    locus : Locus
+        Locus object.
+    r_tol : float = 1e-8
         Tolerance level for eigenvalue check of positive semidefinite matrix of R.
+    s : Optional[float] = None
+        An estimated s from estimate_s_rss function.
+    eigvens : Optional[Dict[str, np.ndarray]] = None
+        A dictionary containing eigenvalues and eigenvectors of R.
 
     Returns
     -------
-    dict
-        A dictionary containing a matplotlib plot object and a pandas DataFrame.
-        The plot compares observed z score vs the expected value.
-        The DataFrame summarizes the conditional distribution for each variant and the likelihood ratio test.
+    pd.DataFrame
+        A pandas DataFrame containing the results of the kriging RSS test.
     """
     # Check and process input arguments z, R
+    input_locus = locus.copy()
+    input_locus = intersect(input_locus)
+    z = (input_locus.sumstats[ColName.BETA] / input_locus.sumstats[ColName.SE]).to_numpy()
+    n = input_locus.sample_size
     z = np.where(np.isnan(z), 0, z)
 
     # Compute eigenvalues and eigenvectors
-    R = R.astype(np.float32)
-    eigvals, eigvecs = np.linalg.eigh(R)
+    if eigvens is not None:
+        eigvals = eigvens["eigvals"]
+        eigvecs = eigvens["eigvecs"]
+    else:
+        eigens = get_eigen(input_locus.ld.r)
+        eigvals = eigens["eigvals"]
+        eigvecs = eigens["eigvecs"]
+    if s is None:
+        s = estimate_s_rss(locus, eigvens={"eigvals": eigvals, "eigvecs": eigvecs})
     eigvals = eigvals[::-1]
     eigvecs = eigvecs[:, ::-1]
 
@@ -211,20 +240,87 @@ def kriging_rss(z: np.ndarray, R: np.ndarray, n: int, s: float, r_tol: float = 1
             "condvar": condvar,
             "z_std_diff": z_std_diff,
             "logLR": logLRmix,
-        }
+        },
+        index=input_locus.sumstats[ColName.SNPID].to_numpy(),
     )
 
-    plt.figure(figsize=(5, 5))
-    plt.scatter(condmean, z)
-    plt.xlabel("Expected value")
-    plt.ylabel("Observed z scores")
-    plt.plot([min(condmean), max(condmean)], [min(condmean), max(condmean)], "r--")
+    # plt.figure(figsize=(5, 5))
+    # plt.scatter(condmean, z)
+    # plt.xlabel("Expected value")
+    # plt.ylabel("Observed z scores")
+    # plt.plot([min(condmean), max(condmean)], [min(condmean), max(condmean)], "r--")
 
-    idx = (logLRmix > 2) & (np.abs(z) > 2)
-    if np.any(idx):
-        plt.scatter(condmean[idx], z[idx], color="red")
+    # idx = (logLRmix > 2) & (np.abs(z) > 2)
+    # if np.any(idx):
+    #     plt.scatter(condmean[idx], z[idx], color="red")
 
-    plt.title("Observed vs Expected z-scores")
-    plt.tight_layout()
+    # plt.title("Observed vs Expected z-scores")
+    # plt.tight_layout()
 
-    return {"plot": plt.gcf(), "conditional_dist": res}
+    # return {"plot": plt.gcf(), "conditional_dist": res}
+
+    return res
+
+
+def compute_dentist_s(locus: Locus) -> pd.DataFrame:
+    """
+    Compute Dentist-S statistic and p-value.
+
+    Reference: https://github.com/mkanai/slalom/blob/854976f8e19e6fad2db3123eb9249e07ba0e1c1b/slalom.py#L254
+
+    Parameters
+    ----------
+    locus : Locus
+        Locus object.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the results of the Dentist-S test.
+    """
+    input_locus = locus.copy()
+    input_locus = intersect(input_locus)
+    df = input_locus.sumstats.copy()
+    df["Z"] = df[ColName.BETA] / df[ColName.SE]
+    lead_idx = df[ColName.P].idxmin()
+    # TODO: use abf to select lead variant, although in most cases the lead variant is the one with the smallest p-value
+    lead_z = df.loc[lead_idx, ColName.Z]
+    df["r"] = input_locus.ld.r[lead_idx]
+    df['r'] = df['r'].astype(np.float32)
+
+    df["t_dentist_s"] = (df.Z - df.r * lead_z) ** 2 / (1 - df.r**2)  # type: ignore
+    df["t_dentist_s"] = np.where(df["t_dentist_s"] < 0, np.inf, df["t_dentist_s"])
+    df.at[lead_idx, "t_dentist_s"] = np.nan
+    df["p_dentist_s"] = stats.chi2.logsf(df["t_dentist_s"], df=1)
+
+    df = df[[ColName.SNPID, "t_dentist_s", "p_dentist_s"]]
+    df.set_index(ColName.SNPID, inplace=True)
+    df.index.name = None
+    return df
+
+
+# TODO: implement HEELS to evaluate the local heritability
+
+def locus_qc(
+    locus: Locus,
+    r_tol: float = 1e-3,
+    method: str = "null-mle",
+) -> Dict[str, Any]:
+    """
+    Quality control for a locus.
+
+    Parameters
+    ----------
+    locus : Locus
+        Locus object.
+    r_tol : float, default=1e-3
+        Tolerance level for eigenvalue check of positive semidefinite matrix of R.
+    method : str, default="null-mle"
+        Method to estimate s. Options are "null-mle", "null-partialmle", or "null-pseudomle".
+
+    Returns
+    -------
+    dict
+        Dictionary of quality control results.
+    """
+    pass
