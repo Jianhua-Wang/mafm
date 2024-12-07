@@ -8,112 +8,13 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 import toml
-from regex import F
 
-from mafm.constants import ColName
 from mafm.credibleset import CredibleSet
-from mafm.ldmatrix import LDMatrix, load_ld
+from mafm.ldmatrix import load_ld
+from mafm.Locus import Locus
 from mafm.sumstats import load_sumstats
 
 logger = logging.getLogger("MAFM")
-
-
-class Locus:
-    """
-    Class for the input data of the fine-mapping analysis.
-
-    Attributes
-    ----------
-    sumstats : pd.DataFrame
-        Sumstats file.
-    original_sumstats : pd.DataFrame
-        Original sumstats file.
-    ld : LDMatrix
-        LD matrix.
-    popu : str
-        Population code.
-    sample_size : int
-        Sample size.
-    """
-
-    def __init__(
-        self,
-        popu: str,
-        cohort: str,
-        sample_size: int,
-        sumstats: pd.DataFrame,
-        ld: Optional[LDMatrix] = None,
-        if_intersect: bool = False,
-    ):
-        """
-        Initialize the Locus object.
-
-        Parameters
-        ----------
-        popu : str
-            Population code. e.g. "EUR". Choose from ["AFR", "AMR", "EAS", "EUR", "SAS"].
-        cohort : str
-            Cohort name.
-        sample_size : int
-            Sample size.
-        sumstats : pd.DataFrame
-            Sumstats file.
-        ld : LDMatrix, optional
-            LD matrix.
-        if_intersect : bool, optional
-            Whether to intersect the LD matrix and sumstats file, by default True.
-
-        """
-        self.sumstats = sumstats
-        self.original_sumstats = self.sumstats.copy()
-        self.popu = popu
-        self.cohort = cohort
-        self.sample_size = sample_size
-        self.chrom = sumstats[ColName.CHR].iloc[0]
-        self.start = sumstats[ColName.BP].min()
-        self.end = sumstats[ColName.BP].max()
-        self.locus_id = f"{popu}_{cohort}:chr{self.chrom}_{self.start}-{self.end}"
-        if ld:
-            self.ld = ld
-            if if_intersect:
-                self.intersect()
-        else:
-            logger.warning("LD matrix and map file not found. Can only run ABF method.")
-            self.ld = LDMatrix(pd.DataFrame(), np.array([]))
-
-    def intersect(self):
-        """
-        Intersect the Variant IDs in the LD matrix and the sumstats file.
-
-        Raises
-        ------
-        ValueError
-            If no common Variant IDs found between the LD matrix and the sumstats file.
-        """
-        if self.ld is None:
-            raise ValueError("LD matrix not found.")
-        ldmap = self.ld.map.copy()
-        r = self.ld.r.copy()
-        # TODO: make sure the order of the Variant IDs in the LD matrix and the sumstats file are the same
-        intersec_index = ldmap[ldmap[ColName.SNPID].isin(self.sumstats[ColName.SNPID])].index
-        if len(intersec_index) == 0:
-            raise ValueError("No common Variant IDs found between the LD matrix and the sumstats file.")
-        elif len(intersec_index) <= 10:
-            logger.warning("Only a few common Variant IDs found between the LD matrix and the sumstats file(<= 10).")
-        ldmap = ldmap.loc[intersec_index]
-        ldmap = ldmap.reset_index(drop=True)
-        r = r[intersec_index, :][:, intersec_index]
-        self.sumstats = self.sumstats.loc[self.sumstats[ColName.SNPID].isin(ldmap[ColName.SNPID])]
-        self.sumstats = self.sumstats.reset_index(drop=True)
-        self.ld = LDMatrix(ldmap, r)
-        logger.info(
-            "Intersected the Variant IDs in the LD matrix and the sumstats file. "
-            f"Number of common Variant IDs: {len(intersec_index)}"
-        )
-
-    def __repr__(self):
-        """Return a string representation of the Locus object."""
-        return f"Locus(locus_id={self.locus_id}, popu={self.popu}, cohort={self.cohort}, sample_size={self.sample_size}, sumstats={self.sumstats.shape}, ld={self.ld.r.shape})"
 
 
 def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = False, **kwargs) -> Locus:
@@ -122,12 +23,20 @@ def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_interse
 
     Parameters
     ----------
-    input_path : str
-        Path to the input files.
+    prefix : str
+        Prefix of the input files.
+    popu : str
+        Population of the input data.
+    cohort : str
+        Cohort of the input data.
+    sample_size : int
+        Sample size of the input data.
+    if_intersect : bool, optional
+        Whether to intersect the input data with the LD matrix, by default False.
 
     Returns
     -------
-    FmInput
+    Locus
         Object containing the input data.
 
     Raises
