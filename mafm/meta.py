@@ -9,7 +9,7 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.ldmatrix import LDMatrix
-from mafm.mafm import Locus
+from mafm.Locus import Locus
 from mafm.sumstats import munge, sort_alleles
 from mafm.utils import io_in_tempdir, tool_manager
 
@@ -28,7 +28,7 @@ def run_metal(
 
     Parameters
     ----------
-    inputs : list[FmInput]
+    inputs : list[Locus]
         List of input data.
     temp_dir : Optional[str], optional
         Temporary directory, by default None.
@@ -94,7 +94,7 @@ def meta_sumstats(
 
     Parameters
     ----------
-    inputs : list[FmInput]
+    inputs : list[Locus]
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -163,7 +163,7 @@ def meta_lds(
 
     Parameters
     ----------
-    inputs : list[FmInput]
+    inputs : list[Locus]
         List of input data.
 
     Returns
@@ -216,7 +216,7 @@ def meta_lds(
     return LDMatrix(merged_variants, merged_ld.astype(np.float16))
 
 
-def meta(
+def meta_all(
     inputs: list[Locus],
     tool: str,
 ) -> Locus:
@@ -225,7 +225,7 @@ def meta(
 
     Parameters
     ----------
-    inputs : list[FmInput]
+    inputs : list[Locus]
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -253,6 +253,7 @@ def meta(
 
     return Locus(popu, cohort, sample_size, sumstats=meta_sumstat, ld=meta_ld, if_intersect=True)
 
+
 def meta_by_population(
     inputs: list[Locus],
     tool: str,
@@ -262,7 +263,7 @@ def meta_by_population(
 
     Parameters
     ----------
-    inputs : list[FmInput]
+    inputs : list[Locus]
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -284,7 +285,42 @@ def meta_by_population(
 
     for popu in meta_popu:
         if len(meta_popu[popu]) > 1:
-            meta_popu[popu] = meta(meta_popu[popu], tool)
+            meta_popu[popu] = meta_all(meta_popu[popu], tool)
         else:
             meta_popu[popu] = meta_popu[popu][0]
     return meta_popu
+
+
+def meta(
+    inputs: list[Locus],
+    tool: str,
+    meta_method: str = "meta_all",
+) -> list[Locus]:
+    """
+    Perform meta-analysis of summary statistics and LD matrices.
+
+    Parameters
+    ----------
+    inputs : list[Locus]
+        List of input data.
+    tool : str
+        Meta-analysis tool.
+    meta_method : str, optional
+        Meta-analysis method, by default "meta_all"
+        Options: "meta_all", "meta_by_population", "no_meta".
+
+    Returns
+    -------
+    Locus
+        Meta-analysis result.
+
+    """
+    if meta_method == "meta_all":
+        return [meta_all(inputs, tool)]
+    elif meta_method == "meta_by_population":
+        res = meta_by_population(inputs, tool)
+        return [res[popu] for popu in res]
+    elif meta_method == "no_meta":
+        return inputs
+    else:
+        raise ValueError(f"Unsupported meta-analysis method: {meta_method}")
