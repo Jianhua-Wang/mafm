@@ -8,7 +8,7 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.credibleset import CredibleSet, combine_creds
-from mafm.mafm import Locus
+from mafm.Locus import Locus
 
 logger = logging.getLogger("ABF")
 
