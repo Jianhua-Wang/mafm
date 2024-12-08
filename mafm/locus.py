@@ -66,7 +66,7 @@ class Locus:
         if ld:
             self.ld = ld
             if if_intersect:
-                self = intersect(self)
+                self = intersect_sumstat_ld(self)
         else:
             logger.warning("LD matrix and map file not found. Can only run ABF method.")
             self.ld = LDMatrix(pd.DataFrame(), np.array([]))
@@ -133,7 +133,22 @@ class Locus:
         return Locus(self.popu, self.cohort, self.sample_size, self.sumstats.copy(), self.ld.copy(), if_intersect=False)
 
 
-def intersect(locus: Locus) -> Locus:
+class LocusCollection:
+    """
+    Class to store a collection of Locus objects.
+
+    All the loci are located in the same chromosome and the same region.
+
+    Attributes
+    ----------
+    loci : list[Locus]
+        List of Locus objects.
+    """
+
+    def __init__(self, loci: list[Locus]):
+        self.loci = loci
+
+def intersect_sumstat_ld(locus: Locus) -> Locus:
     """
     Intersect the Variant IDs in the LD matrix and the sumstats file.
 
@@ -161,13 +176,13 @@ def intersect(locus: Locus) -> Locus:
         raise ValueError("No common Variant IDs found between the LD matrix and the sumstats file.")
     elif len(intersec_variants) <= 10:
         logger.warning("Only a few common Variant IDs found between the LD matrix and the sumstats file(<= 10).")
-    ldmap['idx'] = ldmap.index
+    ldmap["idx"] = ldmap.index
     ldmap.set_index(ColName.SNPID, inplace=True, drop=False)
     ldmap = ldmap.loc[intersec_variants].copy()
-    intersec_index = ldmap['idx'].to_numpy()
+    intersec_index = ldmap["idx"].to_numpy()
     r = r[intersec_index, :][:, intersec_index]
     intersec_sumstats.reset_index(drop=True, inplace=True)
-    ldmap.drop('idx', axis=1, inplace=True)
+    ldmap.drop("idx", axis=1, inplace=True)
     ldmap = ldmap.reset_index(drop=True)
     intersec_ld = LDMatrix(ldmap, r)
     logger.info(

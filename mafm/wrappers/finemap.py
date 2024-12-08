@@ -9,7 +9,7 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.credibleset import CredibleSet, combine_creds
-from mafm.Locus import Locus
+from mafm.locus import Locus
 from mafm.utils import io_in_tempdir, tool_manager
 
 logger = logging.getLogger("FINEMAP")
