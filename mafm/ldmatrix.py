@@ -133,7 +133,7 @@ def load_ld_matrix(file_path: str, delimiter: str = "\t") -> np.ndarray:
     """
     if file_path.endswith(".npz"):
         ld_file_key = np.load(file_path).files[0]
-        return np.load(file_path)[ld_file_key]
+        return np.load(file_path)[ld_file_key].astype(np.float32)
     lower_triangle = read_lower_triangle(file_path, delimiter)
 
     # Create the symmetric matrix
