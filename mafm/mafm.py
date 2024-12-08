@@ -11,7 +11,7 @@ import toml
 
 from mafm.credibleset import CredibleSet
 from mafm.ldmatrix import load_ld
-from mafm.Locus import Locus
+from mafm.locus import Locus
 from mafm.sumstats import load_sumstats
 
 logger = logging.getLogger("MAFM")

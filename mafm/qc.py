@@ -11,7 +11,7 @@ from scipy.optimize import minimize_scalar
 from sklearn.mixture import GaussianMixture
 
 from mafm.constants import ColName
-from mafm.Locus import Locus, intersect
+from mafm.locus import Locus, intersect_sumstat_ld
 
 logger = logging.getLogger("QC")
 
@@ -32,7 +32,7 @@ def get_eigen(ldmatrix: np.ndarray) -> Dict[str, np.ndarray]:
     dict
         Dictionary containing eigenvalues and eigenvectors.
     """
-    ldmatrix = ldmatrix.astype(np.float32)
+    # ldmatrix = ldmatrix.astype(np.float32)
     eigvals, eigvecs = np.linalg.eigh(ldmatrix)
     return {"eigvals": eigvals, "eigvecs": eigvecs}
 
@@ -62,7 +62,7 @@ def estimate_s_rss(
     """
     # make sure the LD matrix and sumstats file are matched
     input_locus = locus.copy()
-    input_locus = intersect(input_locus)
+    input_locus = intersect_sumstat_ld(input_locus)
     z = (input_locus.sumstats[ColName.BETA] / input_locus.sumstats[ColName.SE]).to_numpy()
     n = input_locus.sample_size
     # Check and process input arguments z, R
@@ -75,8 +75,8 @@ def estimate_s_rss(
         eigvals = eigens["eigvals"]
         eigvecs = eigens["eigvecs"]
 
-    if np.any(eigvals < -r_tol):
-        logger.warning("The LD matrix is not positive semidefinite. Negative eigenvalues are set to zero")
+    # if np.any(eigvals < -r_tol):
+    #     logger.warning("The LD matrix is not positive semidefinite. Negative eigenvalues are set to zero")
     eigvals[eigvals < r_tol] = 0
 
     if n <= 1:
@@ -166,7 +166,7 @@ def kriging_rss(
     """
     # Check and process input arguments z, R
     input_locus = locus.copy()
-    input_locus = intersect(input_locus)
+    input_locus = intersect_sumstat_ld(input_locus)
     z = (input_locus.sumstats[ColName.BETA] / input_locus.sumstats[ColName.SE]).to_numpy()
     n = input_locus.sample_size
     z = np.where(np.isnan(z), 0, z)
@@ -279,14 +279,13 @@ def compute_dentist_s(locus: Locus) -> pd.DataFrame:
         A pandas DataFrame containing the results of the Dentist-S test.
     """
     input_locus = locus.copy()
-    input_locus = intersect(input_locus)
+    input_locus = intersect_sumstat_ld(input_locus)
     df = input_locus.sumstats.copy()
     df["Z"] = df[ColName.BETA] / df[ColName.SE]
     lead_idx = df[ColName.P].idxmin()
     # TODO: use abf to select lead variant, although in most cases the lead variant is the one with the smallest p-value
     lead_z = df.loc[lead_idx, ColName.Z]
     df["r"] = input_locus.ld.r[lead_idx]
-    df['r'] = df['r'].astype(np.float32)
 
     df["t_dentist_s"] = (df.Z - df.r * lead_z) ** 2 / (1 - df.r**2)  # type: ignore
     df["t_dentist_s"] = np.where(df["t_dentist_s"] < 0, np.inf, df["t_dentist_s"])
@@ -300,6 +299,25 @@ def compute_dentist_s(locus: Locus) -> pd.DataFrame:
 
 
 # TODO: implement HEELS to evaluate the local heritability
+# TODO: compare the correlation between the AF in the sumstats and the AF in the LD reference.
+
+
+def ld_4th_moment(locus: Locus) -> pd.DataFrame:
+    """
+    Compute the 4th moment of the LD matrix.
+
+    Parameters
+    ----------
+    locus : Locus
+        Locus object.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the 4th moment of the LD matrix.
+    """
+    pass
+
 
 def locus_qc(
     locus: Locus,

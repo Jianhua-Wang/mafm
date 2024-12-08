@@ -9,7 +9,7 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.ldmatrix import LDMatrix
-from mafm.Locus import Locus
+from mafm.locus import Locus
 from mafm.sumstats import munge, sort_alleles
 from mafm.utils import io_in_tempdir, tool_manager
 
