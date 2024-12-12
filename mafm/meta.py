@@ -210,7 +210,7 @@ def meta_by_population(
         if len(meta_popu[popu]) > 1:
             meta_popu[popu] = meta_all(LocusSet(meta_popu[popu]))
         else:
-            meta_popu[popu] = meta_popu[popu][0]
+            meta_popu[popu] = intersect_sumstat_ld(meta_popu[popu][0])
     return meta_popu
 
 

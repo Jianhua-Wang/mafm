@@ -81,7 +81,9 @@ class Locus:
         if ld:
             self.ld = ld
             if if_intersect:
-                self = intersect_sumstat_ld(self)
+                inters = intersect_sumstat_ld(self)
+                self.sumstats = inters.sumstats
+                self.ld = inters.ld
         else:
             logger.warning("LD matrix and map file not found. Can only run ABF method.")
             self.ld = LDMatrix(pd.DataFrame(), np.array([]))
