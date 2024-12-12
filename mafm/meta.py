@@ -6,6 +6,7 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from mafm.constants import ColName
 from mafm.ldmatrix import LDMatrix
@@ -13,7 +14,7 @@ from mafm.locus import Locus, LocusSet, intersect_sumstat_ld
 from mafm.sumstats import munge, sort_alleles
 from mafm.utils import io_in_tempdir, tool_manager
 
-logger = logging.getLogger("MAFM")
+logger = logging.getLogger("META")
 
 
 @io_in_tempdir("./tmp/metal")
@@ -85,6 +86,90 @@ def run_metal(
     return sumstats[[ColName.BETA, ColName.SE, ColName.P]]
 
 
+def fixed_effect_meta(
+    inputs: LocusSet,
+) -> pd.DataFrame:
+    """
+    Perform fixed effect meta-analysis.
+
+    Parameters
+    ----------
+    inputs : LocusSet
+        List of input data.
+
+    Returns
+    -------
+    pd.DataFrame
+        Meta-analysis summary statistics.
+    """
+    # Merge all dataframes on SNPID
+    merged_df = inputs.loci[0].original_sumstats[[ColName.SNPID]].copy()
+    for i, df in enumerate(inputs.loci):
+        df = df.sumstats[[ColName.SNPID, ColName.BETA, ColName.SE]].copy()
+        df.rename(columns={ColName.BETA: f"BETA_{i}", ColName.SE: f"SE_{i}"}, inplace=True)
+        merged_df = pd.merge(merged_df, df, on=ColName.SNPID, how="outer", suffixes=("", f"_{i}"))
+
+    # Calculate weights (inverse of variance)
+    for i in range(len(inputs.loci)):
+        merged_df[f"weight_{i}"] = 1 / (merged_df[f"SE_{i}"] ** 2)
+
+    # Calculate meta-analysis beta
+    merged_df.fillna(0, inplace=True)
+    beta_numerator = sum(merged_df[f"BETA_{i}"] * merged_df[f"weight_{i}"] for i in range(len(inputs.loci)))
+    weight_sum = sum(merged_df[f"weight_{i}"] for i in range(len(inputs.loci)))
+    meta_beta = beta_numerator / weight_sum
+
+    # Calculate meta-analysis SE
+    meta_se = np.sqrt(1 / weight_sum)
+
+    # Calculate meta-analysis Z-score and p-value
+    meta_z = meta_beta / meta_se
+    meta_p = 2 * stats.norm.sf(abs(meta_z))
+
+    # Create output dataframe
+    output_df = pd.DataFrame(
+        {ColName.SNPID: merged_df[ColName.SNPID], ColName.BETA: meta_beta, ColName.SE: meta_se, ColName.P: meta_p}
+    )
+    output_df.set_index(ColName.SNPID, inplace=True)
+    return output_df[[ColName.BETA, ColName.SE, ColName.P]]
+
+
+def meta_af(
+    inputs: LocusSet,
+    af_col: str = ColName.EAF,
+) -> pd.DataFrame:
+    """
+    Perform meta-analysis of allele frequencies.
+
+    Meta allele frequency is the weighted (by sample size) average of allele frequencies across studies.
+
+    Parameters
+    ----------
+    inputs : LocusSet
+        List of input data.
+    af_col : str, optional
+        Allele frequency column name, by default ColName.EAF.
+
+    Returns
+    -------
+    pd.DataFrame
+        Meta-analysis allele frequencies.
+    """
+    n_sum = sum([input.sample_size for input in inputs.loci])
+    weights = [input.sample_size / n_sum for input in inputs.loci]
+    merged_df = inputs.loci[0].original_sumstats[[ColName.SNPID]].copy()
+    for i, df in enumerate(inputs.loci):
+        df = df.original_sumstats[[ColName.SNPID, af_col]]
+        df.rename(columns={af_col: f"af_{i}"}, inplace=True)
+        merged_df = pd.merge(merged_df, df, on=ColName.SNPID, how="outer", suffixes=("", f"_{i}"))
+        merged_df[f"af_{i}"] = merged_df[f"af_{i}"] * weights[i]
+
+    merged_df.fillna(0, inplace=True)
+    merged_df.set_index(ColName.SNPID, inplace=True)
+    merged_df["af_meta"] = merged_df.sum(axis=1)
+    return merged_df[["af_meta"]]
+
+
 def meta_sumstats(
     inputs: LocusSet,
     tool: str,
@@ -131,7 +216,8 @@ def meta_sumstats(
     if tool == "metal":
         meta_res = run_metal(inputs)
     elif tool == "metasoft":
-        raise NotImplementedError("METASOFT is not implemented yet.")
+        # raise NotImplementedError("METASOFT is not implemented yet.")
+        meta_res = fixed_effect_meta(inputs)
     else:
         raise ValueError(f"Unsupported meta-analysis tool: {tool}")
 
