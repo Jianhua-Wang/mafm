@@ -94,17 +94,29 @@ def meta_lds(
         Meta-analysis LD matrix.
     """
     # Get unique variants across all studies
-    # TODO: meta allele frequency of LD reference, if exists
     variant_dfs = [input.ld.map for input in inputs.loci]
     ld_matrices = [input.ld.r for input in inputs.loci]
     sample_sizes = [input.sample_size for input in inputs.loci]
 
     # Concatenate all variants
     merged_variants = pd.concat(variant_dfs, ignore_index=True)
-    merged_variants.drop_duplicates(subset=["SNPID"], inplace=True)
-    merged_variants.sort_values(["CHR", "BP"], inplace=True)
+    merged_variants.drop_duplicates(subset=[ColName.SNPID], inplace=True)
+    merged_variants.sort_values([ColName.CHR, ColName.BP], inplace=True)
     merged_variants.reset_index(drop=True, inplace=True)
-    all_variants = merged_variants["SNPID"].values
+    # meta allele frequency of LD reference, if exists
+    if all("AF2" in variant_df.columns for variant_df in variant_dfs):
+        n_sum = sum([input.sample_size for input in inputs.loci])
+        weights = [input.sample_size / n_sum for input in inputs.loci]
+        af_df = merged_variants[[ColName.SNPID]].copy()
+        af_df.set_index(ColName.SNPID, inplace=True)
+        for i, variant_df in enumerate(variant_dfs):
+            df = variant_df.copy()
+            df.set_index(ColName.SNPID, inplace=True)
+            af_df[f"AF2_{i}"] = df["AF2"] * weights[i]
+        af_df.fillna(0, inplace=True)
+        af_df["AF2_meta"] = af_df.sum(axis=1)
+        merged_variants["AF2"] = merged_variants[ColName.SNPID].map(af_df["AF2_meta"])
+    all_variants = merged_variants[ColName.SNPID].values
     variant_to_index = {snp: idx for idx, snp in enumerate(all_variants)}
     n_variants = len(all_variants)
 
@@ -132,10 +144,6 @@ def meta_lds(
     mask = weight_matrix != 0
     merged_ld[mask] /= weight_matrix[mask]
 
-    # Prepare output variant information
-    # Get complete variant information from the first occurrence of each variant
-    # merged_variants = pd.concat(variant_dfs).drop_duplicates(subset="SNPID", keep="first")
-    # merged_variants = merged_variants.set_index("SNPID").loc[all_variants].reset_index()
     return LDMatrix(merged_variants, merged_ld.astype(np.float16))
 
 

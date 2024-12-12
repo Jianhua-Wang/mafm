@@ -187,6 +187,7 @@ def load_ld_map(map_path: str, delimiter: str = "\t") -> pd.DataFrame:
     1   1-2000-C-T  1  2000  C  T
     2   2-3000-C-T  2  3000  T  C
     """
+    # TODO: use REF/ALT instead of A1/A2
     map_df = pd.read_csv(map_path, sep=delimiter)
     missing_cols = [col for col in ColName.map_cols if col not in map_df.columns]
     if missing_cols:
@@ -203,6 +204,7 @@ def load_ld_map(map_path: str, delimiter: str = "\t") -> pd.DataFrame:
     outdf = outdf[outdf[ColName.A1] != outdf[ColName.A2]]
     outdf = make_SNPID_unique(outdf, col_ea=ColName.A1, col_nea=ColName.A2, remove_duplicates=False)
     outdf.reset_index(drop=True, inplace=True)
+    # TODO: check if allele frequency is available
     return outdf
 
 
