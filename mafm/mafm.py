@@ -1,7 +1,6 @@
 """Main module."""
 
 import logging
-import os
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -10,49 +9,8 @@ import pandas as pd
 import toml
 
 from mafm.credibleset import CredibleSet
-from mafm.ldmatrix import load_ld
-from mafm.locus import Locus
-from mafm.sumstats import load_sumstats
 
 logger = logging.getLogger("MAFM")
-
-
-def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = False, **kwargs) -> Locus:
-    """
-    Load the input data of the fine-mapping analysis.
-
-    Parameters
-    ----------
-    prefix : str
-        Prefix of the input files.
-    popu : str
-        Population of the input data.
-    cohort : str
-        Cohort of the input data.
-    sample_size : int
-        Sample size of the input data.
-    if_intersect : bool, optional
-        Whether to intersect the input data with the LD matrix, by default False.
-
-    Returns
-    -------
-    Locus
-        Object containing the input data.
-
-    Raises
-    ------
-    ValueError
-        If the input files are not found.
-    """
-    sumstats = load_sumstats(f"{prefix}.sumstat", if_sort_alleles=True, **kwargs)
-    if os.path.exists(f"{prefix}.ld"):
-        ld = load_ld(f"{prefix}.ld", f"{prefix}.ldmap", if_sort_alleles=True, **kwargs)
-    elif os.path.exists(f"{prefix}.ld.npz"):
-        ld = load_ld(f"{prefix}.ld.npz", f"{prefix}.ldmap", if_sort_alleles=True, **kwargs)
-    else:
-        raise ValueError("LD matrix file not found.")
-
-    return Locus(popu, cohort, sample_size, sumstats=sumstats, ld=ld, if_intersect=if_intersect)
 
 
 class FmOutput:

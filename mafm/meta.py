@@ -9,7 +9,7 @@ import pandas as pd
 
 from mafm.constants import ColName
 from mafm.ldmatrix import LDMatrix
-from mafm.locus import Locus
+from mafm.locus import Locus, LocusSet, intersect_sumstat_ld
 from mafm.sumstats import munge, sort_alleles
 from mafm.utils import io_in_tempdir, tool_manager
 
@@ -18,7 +18,7 @@ logger = logging.getLogger("MAFM")
 
 @io_in_tempdir("./tmp/metal")
 def run_metal(
-    inputs: list[Locus],
+    inputs: LocusSet,
     temp_dir: Optional[str] = None,
 ) -> pd.DataFrame:
     """
@@ -28,7 +28,7 @@ def run_metal(
 
     Parameters
     ----------
-    inputs : list[Locus]
+    inputs : LocusSet
         List of input data.
     temp_dir : Optional[str], optional
         Temporary directory, by default None.
@@ -39,7 +39,7 @@ def run_metal(
         Meta-analysis summary statistics.
 
     """
-    logger.info(f"Running METAL for {len(inputs)} datasets")
+    logger.info(f"Running METAL for {len(inputs.loci)} datasets")
     logger.info(f"Temp dir: {temp_dir}")
 
     metal_describe = """
@@ -53,7 +53,7 @@ def run_metal(
     PROCESS %s
     """
     all_metal_describe = []
-    for i, input in enumerate(inputs):
+    for i, input in enumerate(inputs.loci):
         sumstat = input.original_sumstats[
             [ColName.SNPID, ColName.EA, ColName.NEA, ColName.EAF, ColName.BETA, ColName.SE]
         ]
@@ -86,7 +86,7 @@ def run_metal(
 
 
 def meta_sumstats(
-    inputs: list[Locus],
+    inputs: LocusSet,
     tool: str,
 ) -> pd.DataFrame:
     """
@@ -94,7 +94,7 @@ def meta_sumstats(
 
     Parameters
     ----------
-    inputs : list[Locus]
+    inputs : LocusSet
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -109,7 +109,7 @@ def meta_sumstats(
     # concatenate input sumstats and meta EAF
     all_sumstat = []
     ith = 1
-    for input in inputs:
+    for input in inputs.loci:
         sumstat = input.original_sumstats
         sumstat = sumstat[[ColName.SNPID, ColName.CHR, ColName.BP, ColName.EA, ColName.NEA]]
         all_sumstat.append(sumstat)
@@ -119,9 +119,9 @@ def meta_sumstats(
     all_sumstat.set_index(ColName.SNPID, inplace=True)
     # meta EAF
     eaf_df = pd.DataFrame(index=all_sumstat.index)
-    n_sum = sum([input.sample_size for input in inputs])
-    weights = [input.sample_size / n_sum for input in inputs]
-    for i, input in enumerate(inputs):
+    n_sum = sum([input.sample_size for input in inputs.loci])
+    weights = [input.sample_size / n_sum for input in inputs.loci]
+    for i, input in enumerate(inputs.loci):
         df = input.original_sumstats.copy()
         df.set_index(ColName.SNPID, inplace=True)
         eaf_df[f"EAF_{i}"] = df[ColName.EAF] * weights[i]
@@ -156,14 +156,14 @@ def meta_sumstats(
 
 
 def meta_lds(
-    inputs: list[Locus],
+    inputs: LocusSet,
 ) -> LDMatrix:
     """
     Perform meta-analysis of LD matrices.
 
     Parameters
     ----------
-    inputs : list[Locus]
+    inputs : LocusSet
         List of input data.
 
     Returns
@@ -173,9 +173,9 @@ def meta_lds(
     """
     # 1. Get unique variants across all studies
     # TODO: meta allele frequency of LD reference, if exists
-    variant_dfs = [input.ld.map for input in inputs]
-    ld_matrices = [input.ld.r for input in inputs]
-    sample_sizes = [input.sample_size for input in inputs]
+    variant_dfs = [input.ld.map for input in inputs.loci]
+    ld_matrices = [input.ld.r for input in inputs.loci]
+    sample_sizes = [input.sample_size for input in inputs.loci]
 
     merged_variants = pd.concat(variant_dfs, ignore_index=True)
     merged_variants.drop_duplicates(subset=["SNPID"], inplace=True)
@@ -217,7 +217,7 @@ def meta_lds(
 
 
 def meta_all(
-    inputs: list[Locus],
+    inputs: LocusSet,
     tool: str,
 ) -> Locus:
     """
@@ -225,7 +225,7 @@ def meta_all(
 
     Parameters
     ----------
-    inputs : list[Locus]
+    inputs : LocusSet
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -239,23 +239,23 @@ def meta_all(
     """
     meta_sumstat = meta_sumstats(inputs, tool)
     meta_ld = meta_lds(inputs)
-    sample_size = sum([input.sample_size for input in inputs])
+    sample_size = sum([input.sample_size for input in inputs.loci])
     popu = set()
-    for input in inputs:
+    for input in inputs.loci:
         for pop in input.popu.split(","):
             popu.add(pop)
-    popu = ",".join(sorted(popu))
+    popu = "+".join(sorted(popu))
     cohort = set()
-    for input in inputs:
+    for input in inputs.loci:
         for cohort_name in input.cohort.split(","):
             cohort.add(cohort_name)
-    cohort = ",".join(sorted(cohort))
+    cohort = "+".join(sorted(cohort))
 
     return Locus(popu, cohort, sample_size, sumstats=meta_sumstat, ld=meta_ld, if_intersect=True)
 
 
 def meta_by_population(
-    inputs: list[Locus],
+    inputs: LocusSet,
     tool: str,
 ) -> dict[str, Locus]:
     """
@@ -263,7 +263,7 @@ def meta_by_population(
 
     Parameters
     ----------
-    inputs : list[Locus]
+    inputs : LocusSet
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -276,7 +276,7 @@ def meta_by_population(
 
     """
     meta_popu = {}
-    for input in inputs:
+    for input in inputs.loci:
         popu = input.popu
         if popu not in meta_popu:
             meta_popu[popu] = [input]
@@ -285,23 +285,23 @@ def meta_by_population(
 
     for popu in meta_popu:
         if len(meta_popu[popu]) > 1:
-            meta_popu[popu] = meta_all(meta_popu[popu], tool)
+            meta_popu[popu] = meta_all(LocusSet(meta_popu[popu]), tool)
         else:
             meta_popu[popu] = meta_popu[popu][0]
     return meta_popu
 
 
 def meta(
-    inputs: list[Locus],
+    inputs: LocusSet,
     tool: str,
     meta_method: str = "meta_all",
-) -> list[Locus]:
+) -> LocusSet:
     """
     Perform meta-analysis of summary statistics and LD matrices.
 
     Parameters
     ----------
-    inputs : list[Locus]
+    inputs : LocusSet
         List of input data.
     tool : str
         Meta-analysis tool.
@@ -311,16 +311,16 @@ def meta(
 
     Returns
     -------
-    Locus
+    LocusSet
         Meta-analysis result.
 
     """
     if meta_method == "meta_all":
-        return [meta_all(inputs, tool)]
+        return LocusSet([meta_all(inputs, tool)])
     elif meta_method == "meta_by_population":
         res = meta_by_population(inputs, tool)
-        return [res[popu] for popu in res]
+        return LocusSet([res[popu] for popu in res])
     elif meta_method == "no_meta":
-        return inputs
+        return LocusSet([intersect_sumstat_ld(i) for i in inputs.loci])
     else:
         raise ValueError(f"Unsupported meta-analysis method: {meta_method}")
