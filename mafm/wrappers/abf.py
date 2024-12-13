@@ -13,7 +13,7 @@ from mafm.locus import Locus
 logger = logging.getLogger("ABF")
 
 
-def run_abf_single(input: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior: float = 0.2) -> CredibleSet:
+def run_abf(locus: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior: float = 0.2) -> CredibleSet:
     """
     Run ABF.
 
@@ -30,8 +30,8 @@ def run_abf_single(input: Locus, max_causal: int = 1, coverage: float = 0.95, va
 
     Parameters
     ----------
-    input : FmInput
-        Input data.
+    locus : Locus
+        Locus object.
     max_causal : int, optional
         Maximum number of causal variants, by default 1, only support 1.
     coverage : float, optional
@@ -49,8 +49,8 @@ def run_abf_single(input: Locus, max_causal: int = 1, coverage: float = 0.95, va
     if max_causal > 1:
         logger.warning("ABF only support single causal variant. max_causal is set to 1.")
         max_causal = 1
-    logger.info(f"Running ABF for {input.prefix} with var_prior={var_prior}")
-    df = input.original_sumstats.copy()
+    logger.info(f"Running ABF for {locus.locus_id} with var_prior={var_prior}")
+    df = locus.original_sumstats.copy()
     df["W2"] = var_prior**2
     df["SNP_BF"] = np.sqrt((df[ColName.SE] ** 2 / (df[ColName.SE] ** 2 + df["W2"]))) * np.exp(
         df["W2"] / (df[ColName.BETA] ** 2 + df["W2"]) * (df[ColName.BETA] ** 2 / df[ColName.SE] ** 2) / 2
@@ -61,7 +61,7 @@ def run_abf_single(input: Locus, max_causal: int = 1, coverage: float = 0.95, va
     idx = np.where(np.cumsum(pips.to_numpy()[ordering]) > coverage)[0][0]
     cs_snps = pips.index[ordering][: (idx + 1)].to_list()
     lead_snps = str(df.loc[df[df[ColName.SNPID].isin(cs_snps)][ColName.P].idxmin(), ColName.SNPID])
-    logger.info(f"Fished ABF for {input.prefix}")
+    logger.info(f"Fished ABF for {locus.locus_id}")
     logger.info("N of credible set: 1")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
@@ -126,6 +126,6 @@ def run_abf_multi(
         Credible sets for ABF.
     """
     out_cred = []
-    for input in inputs:
-        out_cred.append(run_abf_single(input, max_causal, coverage, var_prior))
+    for locus in inputs:
+        out_cred.append(run_abf(locus, max_causal, coverage, var_prior))
     return combine_creds(out_cred, combine_cred, combine_pip, jaccard_threshold)
