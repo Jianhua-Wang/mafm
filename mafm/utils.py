@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 logger = logging.getLogger("Utils")
+logger.setLevel(logging.DEBUG)
 
 
 # Type variable for decorator
@@ -240,7 +241,7 @@ class ExternalTool:
 
         raise FileNotFoundError(f"Could not find {self.name} executable")
 
-    def run(self, command: List[str], output_file_path: Optional[Union[str, List[str]]] = None) -> None:
+    def run(self, command: List[str], log_file: str, output_file_path: Optional[Union[str, List[str]]] = None) -> None:
         """
         Execute a command line instruction, log the output, and handle errors.
 
@@ -252,6 +253,8 @@ class ExternalTool:
         ----------
         command : List[str]
             The command line instruction to be executed.
+        log_file : str
+            The file to log the output.
         output_file_path : Optional[Union[str, List[str]]], optional
             The expected output file path. If provided, the function will check
             if this file exists after command execution.
@@ -265,17 +268,14 @@ class ExternalTool:
 
         Examples
         --------
-        >>> tool_manager.get_tool("finemap").run(["--help"])
+        >>> tool_manager.get_tool("finemap").run(["--help"], "finemap.log")
         """
         command = [self.get_path()] + command
         try:
             # Run the command and capture output
             logger.debug(f"Run command: {' '.join(command)}")
-            result = subprocess.run(' '.join(command), shell=True, check=True, text=True, capture_output=True)
-
-            # Log stdout and stderr
-            logger.debug(f"Command stdout:\n{result.stdout}")
-            logger.debug(f"Command stderr:\n{result.stderr}")
+            with open(log_file, "w") as log:
+                subprocess.run(command, shell=False, check=True, stdout=log, stderr=log)
 
             # Check for output file if path is provided
             if output_file_path:
@@ -285,15 +285,8 @@ class ExternalTool:
                     if not os.path.exists(path):
                         raise FileNotFoundError(f"Expected output file not found: {path}")
 
-        except subprocess.CalledProcessError as e:
-            # Log error details
-            logger.error(f"Command execution failed: {e}")
-            logger.error(f"Command stdout:\n{e.stdout}")
-            logger.error(f"Command stderr:\n{e.stderr}")
-            raise
-
-        except FileNotFoundError as e:
-            logger.error(str(e))
+        except Exception as e:
+            logger.error(f"Command execution failed: {e}\nSee {log_file} for details.")
             raise
 
 
@@ -378,7 +371,9 @@ class ToolManager:
             raise KeyError(f"Tool {name} is not registered")
         return self.tools[name]
 
-    def run_tool(self, name: str, args: List[str], output_file_path: Optional[Union[str, List[str]]] = None) -> None:
+    def run_tool(
+        self, name: str, args: List[str], log_file: str, output_file_path: Optional[Union[str, List[str]]] = None
+    ) -> None:
         """
         Run a registered tool with the given arguments.
 
@@ -388,6 +383,8 @@ class ToolManager:
             The name of the registered tool.
         args : List[str]
             The arguments to pass to the tool.
+        log_file : str
+            The file to log the output.
         output_file_path : Optional[Union[str, List[str]]], optional
             The expected output file path. If provided, the function will check
             if this file exists after command execution.
@@ -406,7 +403,7 @@ class ToolManager:
         """
         if name not in self.tools:
             raise KeyError(f"Tool {name} is not registered")
-        return self.get_tool(name).run(args, output_file_path)
+        return self.get_tool(name).run(args, log_file, output_file_path)
 
 
 tool_manager = ToolManager()
