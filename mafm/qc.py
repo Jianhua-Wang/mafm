@@ -371,7 +371,7 @@ def ld_4th_moment(locus_set: LocusSet) -> pd.DataFrame:
         locus = intersect_sumstat_ld(locus)
         r_4th = pd.Series(index=locus.ld.map[ColName.SNPID], data=np.power(locus.ld.r, 4).sum(axis=0))
         r_4th = r_4th - 1
-        r_4th.name = f"{locus.cohort}_{locus.popu}"
+        r_4th.name = f"{locus.popu}_{locus.cohort}"
         ld_4th_res.append(r_4th)
     return pd.concat(ld_4th_res, axis=1)
 
@@ -418,7 +418,7 @@ def ld_decay(locus_set: LocusSet) -> pd.DataFrame:
                 "distance_kb": bins[1:] / binsize,
                 "r2_avg": r2_avg,
                 "decay_rate": popt[0],
-                "cohort": f"{locus.cohort}_{locus.popu}",
+                "cohort": f"{locus.popu}_{locus.cohort}",
             }
         )
         decay_res.append(res)
@@ -465,7 +465,8 @@ def cochran_q(locus_set: LocusSet) -> pd.DataFrame:
     p_value = stats.chi2.sf(Q, df)
 
     # Calculate I^2
-    I_squared = np.maximum(0, (Q - df) / Q * 100)
+    with np.errstate(invalid="ignore"):
+        I_squared = np.maximum(0, (Q - df) / Q * 100)
 
     # Create output dataframe
     output_df = pd.DataFrame({"SNPID": merged_df["SNPID"], "Q": Q, "Q_pvalue": p_value, "I_squared": I_squared})
@@ -505,11 +506,12 @@ def locus_qc(
         eigens = get_eigen(lo.ld.r)
         lambda_s = estimate_s_rss(locus, r_tol, method, eigens)
         expected_z = kriging_rss(locus, r_tol, lambda_s, eigens)
-        expected_z["cohort"] = f"{locus.cohort}_{locus.popu}"
+        expected_z["lambda_s"] = lambda_s
+        expected_z["cohort"] = f"{locus.popu}_{locus.cohort}"
         dentist_s = compute_dentist_s(locus)
-        dentist_s["cohort"] = f"{locus.cohort}_{locus.popu}"
+        dentist_s["cohort"] = f"{locus.popu}_{locus.cohort}"
         compare_maf_res = compare_maf(locus)
-        compare_maf_res["cohort"] = f"{locus.cohort}_{locus.popu}"
+        compare_maf_res["cohort"] = f"{locus.popu}_{locus.cohort}"
         all_expected_z.append(expected_z)
         all_dentist_s.append(dentist_s)
         all_compare_maf.append(compare_maf_res)
@@ -520,8 +522,11 @@ def locus_qc(
     qc_metrics["dentist_s"] = all_dentist_s
     qc_metrics["compare_maf"] = all_compare_maf
 
-    qc_metrics["cochran_q"] = cochran_q(locus_set)
-    qc_metrics["snp_missingness"] = snp_missingness(locus_set)
     qc_metrics["ld_4th_moment"] = ld_4th_moment(locus_set)
     qc_metrics["ld_decay"] = ld_decay(locus_set)
+
+    if len(locus_set.loci) > 1:
+        qc_metrics["cochran_q"] = cochran_q(locus_set)
+        qc_metrics["snp_missingness"] = snp_missingness(locus_set)
+
     return qc_metrics

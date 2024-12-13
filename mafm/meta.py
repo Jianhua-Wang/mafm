@@ -127,7 +127,7 @@ def meta_lds(
     # Process each study
     for ld_mat, variants_df, sample_size in zip(ld_matrices, variant_dfs, sample_sizes):
         # coverte float16 to float32, to avoid overflow
-        ld_mat = ld_mat.astype(np.float32)
+        # ld_mat = ld_mat.astype(np.float32)
 
         # Get indices in the master matrix
         study_snps = variants_df["SNPID"].values
@@ -144,7 +144,7 @@ def meta_lds(
     mask = weight_matrix != 0
     merged_ld[mask] /= weight_matrix[mask]
 
-    return LDMatrix(merged_variants, merged_ld.astype(np.float16))
+    return LDMatrix(merged_variants, merged_ld.astype(np.float32))
 
 
 def meta_all(
