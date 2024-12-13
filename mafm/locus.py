@@ -24,7 +24,7 @@ class Locus:
         The original summary statistics file.
         Population code.
     chrom : int
-        Chromosome number.
+        Chromosome.
     start : int
         Start position of the locus.
     end : int
@@ -353,6 +353,7 @@ def load_locus_set(locus_info: pd.DataFrame, if_intersect: bool = False, **kwarg
     missing_cols = [col for col in required_cols if col not in locus_info.columns]
     if len(missing_cols) > 0:
         raise ValueError(f"The following columns are required: {missing_cols}")
+    # TODO: make sure the combination of popu and cohort is unique
     loci = []
     for i, row in locus_info.iterrows():
         loci.append(load_locus(row["prefix"], row["popu"], row["cohort"], row["sample_size"], if_intersect, **kwargs))

@@ -7,11 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import stats
-from scipy.optimize import minimize_scalar
+from scipy.optimize import curve_fit, minimize_scalar
 from sklearn.mixture import GaussianMixture
 
 from mafm.constants import ColName
-from mafm.locus import Locus, intersect_sumstat_ld
+from mafm.locus import Locus, LocusSet, intersect_sumstat_ld
 
 logger = logging.getLogger("QC")
 
@@ -235,29 +235,16 @@ def kriging_rss(
 
     res = pd.DataFrame(
         {
+            "SNPID": input_locus.sumstats[ColName.SNPID].to_numpy(),
             "z": z,
             "condmean": condmean,
             "condvar": condvar,
             "z_std_diff": z_std_diff,
             "logLR": logLRmix,
         },
-        index=input_locus.sumstats[ColName.SNPID].to_numpy(),
+        # index=input_locus.sumstats[ColName.SNPID].to_numpy(),
     )
-
-    # plt.figure(figsize=(5, 5))
-    # plt.scatter(condmean, z)
-    # plt.xlabel("Expected value")
-    # plt.ylabel("Observed z scores")
-    # plt.plot([min(condmean), max(condmean)], [min(condmean), max(condmean)], "r--")
-
-    # idx = (logLRmix > 2) & (np.abs(z) > 2)
-    # if np.any(idx):
-    #     plt.scatter(condmean[idx], z[idx], color="red")
-
-    # plt.title("Observed vs Expected z-scores")
-    # plt.tight_layout()
-
-    # return {"plot": plt.gcf(), "conditional_dist": res}
+    # TODO: remove variants with logLR > 2 and abs(z) > 2
 
     return res
 
@@ -292,19 +279,15 @@ def compute_dentist_s(locus: Locus) -> pd.DataFrame:
     df.at[lead_idx, "t_dentist_s"] = np.nan
     df["p_dentist_s"] = stats.chi2.logsf(df["t_dentist_s"], df=1)
 
-    df = df[[ColName.SNPID, "t_dentist_s", "p_dentist_s"]]
-    df.set_index(ColName.SNPID, inplace=True)
-    df.index.name = None
+    df = df[[ColName.SNPID, "t_dentist_s", "p_dentist_s"]].copy()
+    # df.set_index(ColName.SNPID, inplace=True)
+    # df.index.name = None
     return df
 
 
-# TODO: implement HEELS to evaluate the local heritability
-# TODO: compare the correlation between the AF in the sumstats and the AF in the LD reference.
-
-
-def ld_4th_moment(locus: Locus) -> pd.DataFrame:
+def compare_maf(locus: Locus) -> pd.DataFrame:
     """
-    Compute the 4th moment of the LD matrix.
+    Compare the allele frequency in the sumstats and the allele frequency in the LD reference.
 
     Parameters
     ----------
@@ -314,23 +297,195 @@ def ld_4th_moment(locus: Locus) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        A pandas DataFrame containing the 4th moment of the LD matrix.
+        A pandas DataFrame containing the results of the comparison.
     """
-    pass
+    input_locus = locus.copy()
+    input_locus = intersect_sumstat_ld(input_locus)
+    df = input_locus.sumstats[[ColName.SNPID, ColName.MAF]].copy()
+    df.rename(columns={ColName.MAF: "MAF_sumstats"}, inplace=True)
+    df.set_index(ColName.SNPID, inplace=True)
+    af_ld = pd.Series(index=input_locus.ld.map[ColName.SNPID], data=input_locus.ld.map["AF2"])
+    maf_ld = np.minimum(af_ld, 1 - af_ld)
+    df["MAF_ld"] = maf_ld
+    df[ColName.SNPID] = df.index
+    df.reset_index(drop=True, inplace=True)
+    return df
 
 
-def locus_qc(
-    locus: Locus,
-    r_tol: float = 1e-3,
-    method: str = "null-mle",
-) -> Dict[str, Any]:
+def snp_missingness(locus_set: LocusSet) -> pd.DataFrame:
     """
-    Quality control for a locus.
+    Compute the missingness of each cohort.
 
     Parameters
     ----------
-    locus : Locus
-        Locus object.
+    locus_set : LocusSet
+        LocusSet object.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the missingness of each cohort.
+    """
+    missingness_df = []
+    for locus in locus_set.loci:
+        loc = intersect_sumstat_ld(locus)
+        loc = loc.sumstats[[ColName.SNPID]].copy()
+        loc[f"{locus.popu}_{locus.cohort}"] = 1
+        loc.set_index(ColName.SNPID, inplace=True)
+        missingness_df.append(loc)
+    missingness_df = pd.concat(missingness_df, axis=1)
+    missingness_df.fillna(0, inplace=True)
+    # log warning if missing rate > 0.1
+    for col in missingness_df.columns:
+        missing_rate = float(round(1 - missingness_df[col].sum() / missingness_df.shape[0], 3))
+        if missing_rate > 0.1:
+            logger.warning(f"The missing rate of {col} is {missing_rate}")
+        else:
+            logger.info(f"The missing rate of {col} is {missing_rate}")
+
+    return missingness_df
+
+
+def ld_4th_moment(locus_set: LocusSet) -> pd.DataFrame:
+    """
+    Compute the 4th moment of the LD matrix.
+
+    Parameters
+    ----------
+    locus_set : LocusSet
+        LocusSet object.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the 4th moment of the LD matrix.
+    """
+    ld_4th_res = []
+    # intersect between loci
+    overlap_snps = set(locus_set.loci[0].sumstats[ColName.SNPID])
+    for locus in locus_set.loci[1:]:
+        overlap_snps = overlap_snps.intersection(set(locus.sumstats[ColName.SNPID]))
+    for locus in locus_set.loci:
+        locus = locus.copy()
+        locus.sumstats = locus.sumstats[locus.sumstats[ColName.SNPID].isin(overlap_snps)]
+        locus = intersect_sumstat_ld(locus)
+        r_4th = pd.Series(index=locus.ld.map[ColName.SNPID], data=np.power(locus.ld.r, 4).sum(axis=0))
+        r_4th = r_4th - 1
+        r_4th.name = f"{locus.cohort}_{locus.popu}"
+        ld_4th_res.append(r_4th)
+    return pd.concat(ld_4th_res, axis=1)
+
+
+def ld_decay(locus_set: LocusSet) -> pd.DataFrame:
+    """
+    Compute the decay of the LD matrix.
+
+    Parameters
+    ----------
+    locus_set : LocusSet
+        LocusSet object.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the decay of the LD matrix.
+    """
+
+    def fit_exp(x, a, b):
+        with np.errstate(over="ignore"):
+            return a * np.exp(-b * x)
+
+    binsize = 1000
+    decay_res = []
+    for locus in locus_set.loci:
+        ldmap = locus.ld.map.copy()
+        r = locus.ld.r.copy()
+        distance_mat = np.array([ldmap["BP"] - ldmap["BP"].values[i] for i in range(len(ldmap))])
+        distance_mat = distance_mat[np.tril_indices_from(distance_mat, k=-1)].flatten()
+        distance_mat = np.abs(distance_mat)
+        r = r[np.tril_indices_from(r, k=-1)].flatten()
+        r = np.square(r)
+        bins = np.arange(0, ldmap["BP"].max() - ldmap["BP"].min() + binsize, binsize)
+
+        r_sum, _ = np.histogram(distance_mat, bins=bins, weights=r)
+        count, _ = np.histogram(distance_mat, bins=bins)
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            r2_avg = np.where(count > 0, r_sum / count, 0)
+        popt, _ = curve_fit(fit_exp, bins[1:] / binsize, r2_avg)
+        res = pd.DataFrame(
+            {
+                "distance_kb": bins[1:] / binsize,
+                "r2_avg": r2_avg,
+                "decay_rate": popt[0],
+                "cohort": f"{locus.cohort}_{locus.popu}",
+            }
+        )
+        decay_res.append(res)
+    return pd.concat(decay_res, axis=0)
+
+
+def cochran_q(locus_set: LocusSet) -> pd.DataFrame:
+    """
+    Compute the Cochran-Q statistic.
+
+    Parameters
+    ----------
+    locus_set : LocusSet
+        LocusSet object.
+
+    Returns
+    -------
+    pd.DataFrame
+        A pandas DataFrame containing the Cochran-Q statistic.
+    """
+    merged_df = locus_set.loci[0].original_sumstats[[ColName.SNPID]].copy()
+    for i, df in enumerate(locus_set.loci):
+        df = df.sumstats[[ColName.SNPID, ColName.BETA, ColName.SE, ColName.EAF]].copy()
+        df.rename(columns={ColName.BETA: f"BETA_{i}", ColName.SE: f"SE_{i}", ColName.EAF: f"EAF_{i}"}, inplace=True)
+        merged_df = pd.merge(merged_df, df, on=ColName.SNPID, how="inner", suffixes=("", f"_{i}"))
+
+    k = len(locus_set.loci)
+    weights = []
+    effects = []
+    for i in range(k):
+        weights.append((1 / (merged_df[f"SE_{i}"] ** 2)))
+        effects.append(merged_df[f"BETA_{i}"])
+
+    # Calculate weighted mean effect size
+    weighted_mean = np.sum([w * e for w, e in zip(weights, effects)], axis=0) / np.sum(weights, axis=0)
+
+    # Calculate Q statistic
+    Q = np.sum([w * (e - weighted_mean) ** 2 for w, e in zip(weights, effects)], axis=0)
+
+    # Calculate degrees of freedom
+    df = k - 1
+
+    # Calculate P-value
+    p_value = stats.chi2.sf(Q, df)
+
+    # Calculate I^2
+    I_squared = np.maximum(0, (Q - df) / Q * 100)
+
+    # Create output dataframe
+    output_df = pd.DataFrame({"SNPID": merged_df["SNPID"], "Q": Q, "Q_pvalue": p_value, "I_squared": I_squared})
+    return output_df.set_index(ColName.SNPID)
+
+
+def locus_qc(
+    locus_set: LocusSet,
+    r_tol: float = 1e-3,
+    method: str = "null-mle",
+):
+    """
+    Quality control for a locus.
+
+    TODO: add LAVA
+
+    Parameters
+    ----------
+    locus_set : LocusSet
+        LocusSet object.
     r_tol : float, default=1e-3
         Tolerance level for eigenvalue check of positive semidefinite matrix of R.
     method : str, default="null-mle"
@@ -341,4 +496,32 @@ def locus_qc(
     dict
         Dictionary of quality control results.
     """
-    pass
+    qc_metrics = {}
+    all_expected_z = []
+    all_dentist_s = []
+    all_compare_maf = []
+    for locus in locus_set.loci:
+        lo = intersect_sumstat_ld(locus)
+        eigens = get_eigen(lo.ld.r)
+        lambda_s = estimate_s_rss(locus, r_tol, method, eigens)
+        expected_z = kriging_rss(locus, r_tol, lambda_s, eigens)
+        expected_z["cohort"] = f"{locus.cohort}_{locus.popu}"
+        dentist_s = compute_dentist_s(locus)
+        dentist_s["cohort"] = f"{locus.cohort}_{locus.popu}"
+        compare_maf_res = compare_maf(locus)
+        compare_maf_res["cohort"] = f"{locus.cohort}_{locus.popu}"
+        all_expected_z.append(expected_z)
+        all_dentist_s.append(dentist_s)
+        all_compare_maf.append(compare_maf_res)
+    all_expected_z = pd.concat(all_expected_z, axis=0)
+    all_dentist_s = pd.concat(all_dentist_s, axis=0)
+    all_compare_maf = pd.concat(all_compare_maf, axis=0)
+    qc_metrics["expected_z"] = all_expected_z
+    qc_metrics["dentist_s"] = all_dentist_s
+    qc_metrics["compare_maf"] = all_compare_maf
+
+    qc_metrics["cochran_q"] = cochran_q(locus_set)
+    qc_metrics["snp_missingness"] = snp_missingness(locus_set)
+    qc_metrics["ld_4th_moment"] = ld_4th_moment(locus_set)
+    qc_metrics["ld_decay"] = ld_decay(locus_set)
+    return qc_metrics

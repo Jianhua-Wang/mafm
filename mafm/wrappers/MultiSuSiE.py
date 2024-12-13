@@ -992,7 +992,7 @@ def single_effect_regression(
 
     if optimize_V in ["EM", "EM_corrected"]:
         V = optimize_prior_variance(
-            optimize_V,
+            optimize_V,  # type: ignore
             prior_weights,  # type: ignore
             rho.shape[0],
             compute_lbf_params=compute_lbf_params,
