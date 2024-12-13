@@ -1,5 +1,6 @@
 """Credible Set functions."""
 
+import json
 import logging
 from dataclasses import dataclass
 from itertools import combinations
@@ -12,7 +13,6 @@ from scipy.cluster.hierarchy import fcluster, linkage
 logger = logging.getLogger("MAFM")
 
 
-@dataclass
 class CredibleSet:
     """
     Class representing credible sets from one fine-mapping tool.
@@ -37,14 +37,83 @@ class CredibleSet:
         Additional parameters used by the fine-mapping tool.
     """
 
-    tool: str
-    parameters: Dict
-    coverage: float
-    n_cs: int
-    cs_sizes: List[int]
-    lead_snps: List[str]
-    snps: List[List[str]]
-    pips: pd.Series
+    def __init__(
+        self,
+        tool: str,
+        parameters: Dict,
+        coverage: float,
+        n_cs: int,
+        cs_sizes: List[int],
+        lead_snps: List[str],
+        snps: List[List[str]],
+        pips: pd.Series,
+    ):
+        self._tool = tool
+        self._parameters = parameters
+        self._coverage = coverage
+        self._n_cs = n_cs
+        self._cs_sizes = cs_sizes
+        self._lead_snps = lead_snps
+        self._snps = snps
+        self._pips = pips
+
+    @property
+    def tool(self) -> str:
+        """Get the tool name."""
+        return self._tool
+
+    @property
+    def parameters(self) -> Dict:
+        """Get the parameters."""
+        return self._parameters
+
+    @property
+    def coverage(self) -> float:
+        """Get the coverage."""
+        return self._coverage
+
+    @property
+    def n_cs(self) -> int:
+        """Get the number of credible sets."""
+        return self._n_cs
+
+    @property
+    def cs_sizes(self) -> List[int]:
+        """Get the sizes of each credible set."""
+        return self._cs_sizes
+
+    @property
+    def lead_snps(self) -> List[str]:
+        """Get the lead SNPs."""
+        return self._lead_snps
+
+    @property
+    def snps(self) -> List[List[str]]:
+        """Get the SNPs."""
+        return self._snps
+
+    @property
+    def pips(self) -> pd.Series:
+        """Get the PIPs."""
+        return self._pips
+
+    def __repr__(self):
+        """Return a string representation of the CredibleSet object."""
+        return f"CredibleSet(\n  tool={self.tool}, coverage={self.coverage}, n_cs={self.n_cs}, cs_sizes={self.cs_sizes}, lead_snps={self.lead_snps}," + \
+            f"\n  Parameters: {json.dumps(self.parameters)}\n)"
+
+    def copy(self) -> "CredibleSet":
+        """Copy the CredibleSet object."""
+        return CredibleSet(
+            tool=self.tool,
+            parameters=self.parameters,
+            coverage=self.coverage,
+            n_cs=self.n_cs,
+            cs_sizes=self.cs_sizes,
+            lead_snps=self.lead_snps,
+            snps=self.snps,
+            pips=self.pips,
+        )
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for TOML storage (excluding pips).
@@ -82,12 +151,12 @@ class CredibleSet:
         """
         return cls(
             tool=data["tool"],
-            n_cs=data["n_cs"],
+            parameters=data["parameters"],
             coverage=data["coverage"],
+            n_cs=data["n_cs"],
+            cs_sizes=data["cs_sizes"],
             lead_snps=data["lead_snps"],
             snps=data["snps"],
-            cs_sizes=data["cs_sizes"],
-            parameters=data["parameters"],
             pips=pips,
         )
 
