@@ -290,9 +290,7 @@ def intersect_loci(list_loci: list[Locus]) -> list[Locus]:
     list[Locus]
         List of Locus objects containing the intersected LD matrices and sumstats files.
     """
-    for locus in list_loci:
-        locus = intersect_sumstat_ld(locus)
-    return list_loci
+    raise NotImplementedError("Intersect the Variant IDs in the LD matrices and the sumstats files of a list of Locus objects.")
 
 
 def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = False, **kwargs) -> Locus:
