@@ -56,6 +56,7 @@ class CredibleSet:
         self._lead_snps = lead_snps
         self._snps = snps
         self._pips = pips
+        # TODO: add results data like, if it is converged, etc.
 
     @property
     def tool(self) -> str:
@@ -70,6 +71,7 @@ class CredibleSet:
     @property
     def coverage(self) -> float:
         """Get the coverage."""
+        # TODO: add actual coverage, as a list of coverage for each credible set
         return self._coverage
 
     @property

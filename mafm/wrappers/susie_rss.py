@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from scipy import optimize, sparse, stats
 
-logger = logging.getLogger("SuSiER")
+logger = logging.getLogger("SuSiE")
 
 
 def susie_get_cs(
@@ -141,9 +141,7 @@ def susie_get_cs(
             cs_dict = dict(zip(row_names, cs))
 
             # Re-order based on purity
-            ordering = np.argsort(purity["min_sq_corr" if squared else "min_abs_corr"])[
-                ::-1
-            ]
+            ordering = np.argsort(purity["min_sq_corr" if squared else "min_abs_corr"])[::-1]
             return {
                 "cs": {row_names[i]: cs[i] for i in ordering},
                 "purity": {k: v[ordering] for k, v in purity.items()},
@@ -178,9 +176,7 @@ def in_CS_x(x: np.ndarray, coverage: float = 0.9) -> np.ndarray:
     return result
 
 
-def in_CS(
-    res: Union[Dict[str, np.ndarray], np.ndarray], coverage: float = 0.9
-) -> np.ndarray:
+def in_CS(res: Union[Dict[str, np.ndarray], np.ndarray], coverage: float = 0.9) -> np.ndarray:
     """
     Return an l-by-p binary matrix indicating which variables are in susie credible sets.
 
@@ -201,9 +197,7 @@ def in_CS(
     return np.apply_along_axis(lambda x: in_CS_x(x, coverage), 1, res)
 
 
-def n_in_CS(
-    res: Union[Dict[str, np.ndarray], np.ndarray], coverage: float = 0.9
-) -> np.ndarray:
+def n_in_CS(res: Union[Dict[str, np.ndarray], np.ndarray], coverage: float = 0.9) -> np.ndarray:
     """
     Compute the number of variables in each credible set.
 
@@ -485,9 +479,7 @@ def Eloglik_ss(
     return -n / 2 * np.log(2 * np.pi * s["sigma2"]) - 1 / (2 * s["sigma2"]) * get_ER2_ss(XtX, Xty, s, yty)  # type: ignore
 
 
-def get_ER2_ss(
-    XtX: np.ndarray, Xty: np.ndarray, s: Dict[str, Union[np.ndarray, float]], yty: float
-) -> float:
+def get_ER2_ss(XtX: np.ndarray, Xty: np.ndarray, s: Dict[str, Union[np.ndarray, float]], yty: float) -> float:
     """
     Get expected squared residuals for summary statistics.
 
@@ -513,19 +505,11 @@ def get_ER2_ss(
     d = np.diag(XtX)
     postb2 = s["alpha"] * s["mu2"]  # Posterior second moment
 
-    result = (
-        yty
-        - 2 * np.sum(betabar * Xty)
-        + np.sum(betabar * (XtX @ betabar))
-        - XB2
-        + np.sum(d * postb2)
-    )  # .T)
+    result = yty - 2 * np.sum(betabar * Xty) + np.sum(betabar * (XtX @ betabar)) - XB2 + np.sum(d * postb2)  # .T)
     return result
 
 
-def SER_posterior_e_loglik_ss(
-    dXtX: np.ndarray, Xty: np.ndarray, s2: float, Eb: np.ndarray, Eb2: np.ndarray
-) -> float:
+def SER_posterior_e_loglik_ss(dXtX: np.ndarray, Xty: np.ndarray, s2: float, Eb: np.ndarray, Eb2: np.ndarray) -> float:
     """
     Posterior expected log-likelihood for a single effect regression.
 
@@ -550,9 +534,7 @@ def SER_posterior_e_loglik_ss(
     return -0.5 / s2 * (-2 * np.sum(Eb * Xty) + np.sum(dXtX * Eb2))  # type: ignore
 
 
-def est_V_uniroot(
-    betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray
-) -> float:
+def est_V_uniroot(betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray) -> float:
     """
     Estimate prior variance using uniroot method.
 
@@ -579,9 +561,7 @@ def est_V_uniroot(
     return np.exp(V_u.root)
 
 
-def neg_loglik_logscale(
-    lV: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray
-) -> float:
+def neg_loglik_logscale(lV: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray) -> float:
     """
     Negative log-likelihood on log scale.
 
@@ -604,9 +584,7 @@ def neg_loglik_logscale(
     return -loglik(np.exp(lV), betahat, shat2, prior_weights)
 
 
-def loglik_grad(
-    V: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray
-) -> float:
+def loglik_grad(V: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray) -> float:
     """
     Gradient of log-likelihood.
 
@@ -626,9 +604,7 @@ def loglik_grad(
     float
         Gradient of log-likelihood.
     """
-    lbf = stats.norm.logpdf(betahat, 0, np.sqrt(V + shat2)) - stats.norm.logpdf(
-        betahat, 0, np.sqrt(shat2)
-    )
+    lbf = stats.norm.logpdf(betahat, 0, np.sqrt(V + shat2)) - stats.norm.logpdf(betahat, 0, np.sqrt(shat2))
     lpo = lbf + np.log(prior_weights + np.sqrt(np.finfo(float).eps))
 
     # Deal with special case of infinite shat2
@@ -642,9 +618,7 @@ def loglik_grad(
     return np.sum(alpha * lbf_grad(V, shat2, betahat**2 / shat2))
 
 
-def negloglik_grad_logscale(
-    lV: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray
-) -> float:
+def negloglik_grad_logscale(lV: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray) -> float:
     """
     Negative gradient of log-likelihood on log scale.
 
@@ -690,9 +664,7 @@ def lbf_grad(V: float, shat2: np.ndarray, T2: np.ndarray) -> np.ndarray:
     return lbf
 
 
-def loglik(
-    V: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray
-) -> float:
+def loglik(V: float, betahat: np.ndarray, shat2: np.ndarray, prior_weights: np.ndarray) -> float:
     """
     Log-likelihood function for SER model.
 
@@ -712,9 +684,7 @@ def loglik(
     float
         Log-likelihood.
     """
-    lbf = stats.norm.logpdf(betahat, 0, np.sqrt(V + shat2)) - stats.norm.logpdf(
-        betahat, 0, np.sqrt(shat2)
-    )
+    lbf = stats.norm.logpdf(betahat, 0, np.sqrt(V + shat2)) - stats.norm.logpdf(betahat, 0, np.sqrt(shat2))
     lpo = lbf + np.log(prior_weights + np.sqrt(np.finfo(float).eps))
 
     # Deal with special case of infinite shat2
@@ -782,9 +752,7 @@ def optimize_prior_variance(
             lV = result.x  # type: ignore
 
             # If the estimated one is worse than current one, don't change it
-            if neg_loglik_logscale(
-                lV, betahat, shat2, prior_weights
-            ) > neg_loglik_logscale(
+            if neg_loglik_logscale(lV, betahat, shat2, prior_weights) > neg_loglik_logscale(
                 np.log(V) if V != 0 else -np.inf, betahat, shat2, prior_weights  # type: ignore
             ):
                 lV = np.log(V) if V != 0 else -np.inf  # type: ignore
@@ -855,9 +823,7 @@ def single_effect_regression_ss(
     """
     valid_optimize_V = ["none", "optim", "uniroot", "EM", "simple"]
     if optimize_V not in valid_optimize_V:
-        raise ValueError(
-            f"Invalid optimize_V method. Must be one of {valid_optimize_V}"
-        )
+        raise ValueError(f"Invalid optimize_V method. Must be one of {valid_optimize_V}")
 
     betahat = Xty / dXtX
     shat2 = residual_variance / dXtX
@@ -876,9 +842,7 @@ def single_effect_regression_ss(
         )
 
     # log(po) = log(BF * prior) for each SNP
-    lbf = stats.norm.logpdf(betahat, 0, np.sqrt(V + shat2)) - stats.norm.logpdf(
-        betahat, 0, np.sqrt(shat2)
-    )
+    lbf = stats.norm.logpdf(betahat, 0, np.sqrt(V + shat2)) - stats.norm.logpdf(betahat, 0, np.sqrt(shat2))
     lpo = lbf + np.log(prior_weights + np.sqrt(np.finfo(float).eps))
 
     # Deal with special case of infinite shat2
@@ -898,9 +862,7 @@ def single_effect_regression_ss(
         post_var = 1 / (1 / V + dXtX / residual_variance)  # Posterior variance
     post_mean = (1 / residual_variance) * post_var * Xty
     post_mean2 = post_var + post_mean**2  # Second moment
-    lbf_model = maxlpo + np.log(
-        weighted_sum_w
-    )  # Analogue of loglik in the non-summary case
+    lbf_model = maxlpo + np.log(weighted_sum_w)  # Analogue of loglik in the non-summary case
 
     if optimize_V == "EM":
         V = optimize_prior_variance(
@@ -963,9 +925,7 @@ def update_each_effect_ss(
     if L > 0:
         for effect_index in range(L):
             # Remove effect_index-th effect from fitted values
-            s["XtXr"] = s["XtXr"] - XtX @ (
-                s["alpha"][effect_index] * s["mu"][effect_index]
-            )
+            s["XtXr"] = s["XtXr"] - XtX @ (s["alpha"][effect_index] * s["mu"][effect_index])
             logger.debug(f"single_effect_regression_ss: {effect_index}")
             # Compute residuals
             XtR = Xty - s["XtXr"]
@@ -994,9 +954,7 @@ def update_each_effect_ss(
                 res["alpha"] * res["mu2"],
             )
 
-            s["XtXr"] = s["XtXr"] + XtX @ (
-                s["alpha"][effect_index] * s["mu"][effect_index]
-            )
+            s["XtXr"] = s["XtXr"] + XtX @ (s["alpha"][effect_index] * s["mu"][effect_index])
 
     s["XtXr"] = s["XtXr"].astype(float)
     return s
@@ -1078,23 +1036,17 @@ def susie_prune_single_effects(
         s["alpha"] = np.vstack(
             [
                 s["alpha"][effects_rank],
-                np.full(
-                    (L - num_effects, s["alpha"].shape[1]), 1 / s["alpha"].shape[1]
-                ),
+                np.full((L - num_effects, s["alpha"].shape[1]), 1 / s["alpha"].shape[1]),
             ]
         )
 
         for n in ["mu", "mu2", "lbf_variable"]:
             if n in s:
-                s[n] = np.vstack(
-                    [s[n][effects_rank], np.zeros((L - num_effects, s[n].shape[1]))]
-                )
+                s[n] = np.vstack([s[n][effects_rank], np.zeros((L - num_effects, s[n].shape[1]))])
 
         for n in ["KL", "lbf"]:
             if n in s:
-                s[n] = np.concatenate(
-                    [s[n][effects_rank], np.full(L - num_effects, np.nan)]
-                )
+                s[n] = np.concatenate([s[n][effects_rank], np.full(L - num_effects, np.nan)])
 
         if V is not None:
             if isinstance(V, np.ndarray) and V.size > 1:
@@ -1164,9 +1116,7 @@ def init_setup(
     if not isinstance(scaled_prior_variance, (int, float)) or scaled_prior_variance < 0:
         raise ValueError("Scaled prior variance should be positive number")
     if scaled_prior_variance > 1 and standardize:
-        raise ValueError(
-            "Scaled prior variance should be no greater than 1 when standardize = True"
-        )
+        raise ValueError("Scaled prior variance should be no greater than 1 when standardize = True")
 
     if residual_variance is None:
         residual_variance = varY
@@ -1175,9 +1125,7 @@ def init_setup(
         prior_weights = np.full(p, 1 / p)
     else:
         if np.all(prior_weights == 0):
-            raise ValueError(
-                "Prior weight should be greater than 0 for at least one variable."
-            )
+            raise ValueError("Prior weight should be greater than 0 for at least one variable.")
         prior_weights = prior_weights / np.sum(prior_weights)
 
     if len(prior_weights) != p:
@@ -1242,9 +1190,7 @@ def init_finalize(
         raise ValueError("Input residual variance sigma2 must be numeric")
     s["sigma2"] = float(s["sigma2"])
     if s["sigma2"] <= 0:
-        raise ValueError(
-            "Residual variance sigma2 must be positive (is your var(Y) zero?)"
-        )
+        raise ValueError("Residual variance sigma2 must be positive (is your var(Y) zero?)")
 
     # Check prior variance
     if not isinstance(s["V"], np.ndarray):
@@ -1256,9 +1202,7 @@ def init_finalize(
     if s["mu"].shape != s["alpha"].shape:
         raise ValueError("Dimension of mu and alpha in input object do not match")
     if s["alpha"].shape[0] != len(s["V"]):
-        raise ValueError(
-            "Input prior variance V must have length of nrow of alpha in input object"
-        )
+        raise ValueError("Input prior variance V must have length of nrow of alpha in input object")
 
     # Update Xr
     if Xr is not None:
@@ -1538,9 +1482,7 @@ def susie_suff_stat(
         if prior_weights is None:
             prior_weights = np.full(XtX.shape[1], (1 - null_weight) / XtX.shape[1])
         else:
-            prior_weights = np.concatenate(
-                [prior_weights * (1 - null_weight), [null_weight]]
-            )
+            prior_weights = np.concatenate([prior_weights * (1 - null_weight), [null_weight]])
         XtX = np.pad(XtX, ((0, 1), (0, 1)))
         Xty = np.append(Xty, 0)
 
@@ -1562,9 +1504,7 @@ def susie_suff_stat(
     elif np.isscalar(X_colmeans):
         X_colmeans = np.full(p, X_colmeans)
     elif len(X_colmeans) != p:
-        raise ValueError(
-            "The length of X_colmeans does not agree with number of variables"
-        )
+        raise ValueError("The length of X_colmeans does not agree with number of variables")
 
     # Initialize SuSiE fit
     s = init_setup(
@@ -1586,9 +1526,7 @@ def susie_suff_stat(
         if not isinstance(s_init, dict):
             raise ValueError("s_init should be a susie object")
         if np.max(s_init["alpha"]) > 1 or np.min(s_init["alpha"]) < 0:
-            raise ValueError(
-                "s_init['alpha'] has invalid values outside range [0,1]; please check your input"
-            )
+            raise ValueError("s_init['alpha'] has invalid values outside range [0,1]; please check your input")
 
         # First, remove effects with s_init['V'] = 0
         s_init = susie_prune_single_effects(s_init)
@@ -1623,7 +1561,7 @@ def susie_suff_stat(
     for i in range(max_iter):
         if track_fit:
             tracking.append(susie_slim(s))
-        logger.debug(f"update_each_effect_ss: {i}")
+        logger.info(f"Iteration {i}/{max_iter}")
         s = update_each_effect_ss(
             XtX,
             Xty,
@@ -1648,15 +1586,14 @@ def susie_suff_stat(
             raise ValueError("The objective becomes infinite. Please check the input.")
 
         if (elbo[i + 1] - elbo[i]) < tol:
+            logger.info("Converged, stopping iteration")
             s["converged"] = True
             break
 
         if estimate_residual_variance:
             est_sigma2 = estimate_residual_variance_ss(XtX, Xty, s, yty, n)
             if est_sigma2 < 0:
-                raise ValueError(
-                    "Estimating residual variance failed: the estimated value is negative"
-                )
+                raise ValueError("Estimating residual variance failed: the estimated value is negative")
             s["sigma2"] = est_sigma2
             logger.debug(f"objective: {get_objective_ss(XtX, Xty, s, yty, n)}")
 
@@ -1678,8 +1615,7 @@ def susie_suff_stat(
         s["intercept"] = np.nan
     else:
         s["intercept"] = y_mean - np.sum(
-            X_colmeans
-            * (np.sum(s["alpha"] * s["mu"], axis=0) / s["X_column_scale_factors"])
+            X_colmeans * (np.sum(s["alpha"] * s["mu"], axis=0) / s["X_column_scale_factors"])
         )
 
     if track_fit:
@@ -1988,9 +1924,7 @@ def summary_susie(object, **kwargs):
         If credible set information is not available in the susie object.
     """
     if "sets" not in object or object["sets"] is None:
-        raise ValueError(
-            "Cannot summarize SuSiE object because credible set information is not available"
-        )
+        raise ValueError("Cannot summarize SuSiE object because credible set information is not available")
 
     variables = pd.DataFrame(
         {
@@ -2004,9 +1938,7 @@ def summary_susie(object, **kwargs):
         variables = variables.drop(object["null_index"] - 1)
 
     if "cs" in object["sets"] and object["sets"]["cs"] is not None:
-        cs = pd.DataFrame(
-            columns=["cs", "cs_log10bf", "cs_avg_r2", "cs_min_r2", "variable"]
-        )
+        cs = pd.DataFrame(columns=["cs", "cs_log10bf", "cs_avg_r2", "cs_min_r2", "variable"])
         idx = 0
         for i, cs_set in object["sets"]["cs"].items():
             ith = int(i[1:])
@@ -2034,9 +1966,7 @@ if __name__ == "__main__":
     np.random.seed(1)
     # read beta from betahat.txt
     beta = np.loadtxt("/project/voight_nextflow/wjh/WJH_packages/susiepy/betahat.txt")
-    sebetahat = np.loadtxt(
-        "/project/voight_nextflow/wjh/WJH_packages/susiepy/sebetahat.txt"
-    )
+    sebetahat = np.loadtxt("/project/voight_nextflow/wjh/WJH_packages/susiepy/sebetahat.txt")
     R = np.loadtxt("/project/voight_nextflow/wjh/WJH_packages/susiepy/R.txt")
     var_y = 7.84240878887082
     n = 574

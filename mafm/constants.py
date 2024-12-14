@@ -57,6 +57,14 @@ class ColName:
     map_cols = [CHR, BP, A1, A2]
 
 
+class Method:
+    """Define methods."""
+
+    FINEMAP = "FINEMAP"
+    SUSIE = "SUSIE"
+    ABF = "ABF"
+
+
 # only support autosomes
 CHROM_LIST = [i for i in range(1, 24)]
 

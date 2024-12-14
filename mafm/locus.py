@@ -250,6 +250,7 @@ def intersect_sumstat_ld(locus: Locus) -> Locus:
         raise ValueError("LD matrix not found.")
     if locus.is_matched:
         logger.info("The LD matrix and sumstats file are matched.")
+        return locus
     ldmap = locus.ld.map.copy()
     r = locus.ld.r.copy()
     sumstats = locus.sumstats.copy()

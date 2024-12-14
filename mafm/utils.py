@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 logger = logging.getLogger("Utils")
-logger.setLevel(logging.DEBUG)
 
 
 # Type variable for decorator
@@ -62,7 +61,6 @@ def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
             if not os.path.exists(dir):
                 os.makedirs(dir, exist_ok=True)
             temp_dir = tempfile.mkdtemp(dir=dir)
-            logger = logging.getLogger("IO")
             logger.debug(f"Created temporary directory: {temp_dir}")
 
             try:

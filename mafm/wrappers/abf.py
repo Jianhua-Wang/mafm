@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from mafm.constants import ColName
+from mafm.constants import ColName, Method
 from mafm.credibleset import CredibleSet, combine_creds
 from mafm.locus import Locus
 
@@ -50,6 +50,7 @@ def run_abf(locus: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior
         logger.warning("ABF only support single causal variant. max_causal is set to 1.")
         max_causal = 1
     logger.info(f"Running ABF for {locus.locus_id} with var_prior={var_prior}")
+    logger.info(f"Input locus: {locus}")
     df = locus.original_sumstats.copy()
     df["W2"] = var_prior**2
     df["SNP_BF"] = np.sqrt((df[ColName.SE] ** 2 / (df[ColName.SE] ** 2 + df["W2"]))) * np.exp(
@@ -65,7 +66,7 @@ def run_abf(locus: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior
     logger.info("N of credible set: 1")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
-        tool=ColName.ABF,
+        tool=Method.ABF,
         n_cs=1,
         coverage=coverage,
         lead_snps=[lead_snps],

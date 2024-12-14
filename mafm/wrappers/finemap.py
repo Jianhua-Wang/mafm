@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from mafm.constants import ColName
+from mafm.constants import ColName, Method
 from mafm.credibleset import CredibleSet, combine_creds
 from mafm.locus import Locus, intersect_sumstat_ld
 from mafm.utils import io_in_tempdir, tool_manager
@@ -50,6 +50,7 @@ def run_finemap(
     """
     logger.info(f"Running FINEMAP for {locus.locus_id} with max_causal={max_causal}")
     logger.info(f"Coverage: {coverage}, n_iter: {n_iter}, n_threads: {n_threads}")
+    logger.info(f"Input locus: {locus}")
     if not locus.is_matched:
         logger.warning("The sumstat and LD are not matched, will match them in same order.")
         locus = intersect_sumstat_ld(locus)
@@ -157,7 +158,7 @@ def run_finemap(
     logger.info("N of credible set: 1")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
-        tool="FINEMAP",
+        tool=Method.FINEMAP,
         n_cs=1,
         coverage=coverage,
         lead_snps=[lead_snps] if not no_cred else [],
