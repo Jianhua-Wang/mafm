@@ -1,5 +1,6 @@
 """Warpper of SuSiE."""
 
+import json
 import logging
 
 import pandas as pd
@@ -49,10 +50,16 @@ def run_susie(
     if not locus.is_matched:
         logger.warning("The sumstat and LD are not matched, will match them in same order.")
         locus = intersect_sumstat_ld(locus)
-    logger.info(f"Running SuSiE for {locus.locus_id} with max_causal={max_causal}")
-    logger.info(f"Coverage: {coverage}, max_iter: {max_iter}, estimate_residual_variance: {estimate_residual_variance}")
-    logger.info(f"min_abs_corr: {min_abs_corr}, convergence_tol: {convergence_tol}")
-    logger.info(f"Input locus: {locus}")
+    logger.info(f"Running SuSiE on {locus}")
+    parameters = {
+        "max_causal": max_causal,
+        "coverage": coverage,
+        "max_iter": max_iter,
+        "estimate_residual_variance": estimate_residual_variance,
+        "min_abs_corr": min_abs_corr,
+        "convergence_tol": convergence_tol,
+    }
+    logger.info(f"Parameters: {json.dumps(parameters, indent=4)}")
     s = susie_rss(
         bhat=locus.sumstats[ColName.BETA].to_numpy(),
         shat=locus.sumstats[ColName.SE].to_numpy(),
@@ -72,6 +79,9 @@ def run_susie(
     cred_snps = [locus.sumstats[ColName.SNPID].iloc[idx].tolist() for idx in cs_idx]
     pips = pd.Series(data=pip, index=locus.sumstats[ColName.SNPID].tolist())
     lead_snps = [str(pips[pips.index.isin(cred_snps[i])].idxmax()) for i in range(n_cs)]
+    logger.info(f"Fished SuSiE on {locus}")
+    logger.info(f"N of credible set: {n_cs}")
+    logger.info(f"Credible set size: {cs_sizes}")
     return CredibleSet(
         tool=Method.SUSIE,
         n_cs=n_cs,
@@ -80,11 +90,5 @@ def run_susie(
         snps=cred_snps,
         cs_sizes=cs_sizes,
         pips=pips,
-        parameters={
-            "max_causal": max_causal,
-            "max_iter": max_iter,
-            "estimate_residual_variance": estimate_residual_variance,
-            "min_abs_corr": min_abs_corr,
-            "convergence_tol": convergence_tol,
-        },
+        parameters=parameters,
     )

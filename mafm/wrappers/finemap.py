@@ -1,5 +1,6 @@
 """Wrapper for FINEMAP."""
 
+import json
 import logging
 import os
 from typing import Optional
@@ -48,9 +49,14 @@ def run_finemap(
         Credible set.
 
     """
-    logger.info(f"Running FINEMAP for {locus.locus_id} with max_causal={max_causal}")
-    logger.info(f"Coverage: {coverage}, n_iter: {n_iter}, n_threads: {n_threads}")
-    logger.info(f"Input locus: {locus}")
+    logger.info(f"Running FINEMAP on {locus}")
+    parameters = {
+        "max_causal": max_causal,
+        "coverage": coverage,
+        "n_iter": n_iter,
+        "n_threads": n_threads,
+    }
+    logger.info(f"Parameters: {json.dumps(parameters, indent=4)}")
     if not locus.is_matched:
         logger.warning("The sumstat and LD are not matched, will match them in same order.")
         locus = intersect_sumstat_ld(locus)
@@ -153,7 +159,7 @@ def run_finemap(
         no_cred = False
 
     # output
-    logger.info(f"Fished FINEMAP for {locus.locus_id}")
+    logger.info(f"Fished FINEMAP on {locus}")
     logger.warning('FINEMAP outputs configuration file, not credible set. Concatenate the configurations to one credible set.')
     logger.info("N of credible set: 1")
     logger.info(f"Credible set size: {len(cs_snps)}")
