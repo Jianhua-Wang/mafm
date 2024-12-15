@@ -63,6 +63,7 @@ class Method:
     FINEMAP = "FINEMAP"
     SUSIE = "SUSIE"
     ABF = "ABF"
+    CARMA = "CARMA"
 
 
 # only support autosomes
