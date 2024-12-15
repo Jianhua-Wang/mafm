@@ -14,7 +14,7 @@ from rpy2.robjects.packages import importr
 from mafm.constants import ColName, Method
 from mafm.credibleset import CredibleSet
 from mafm.locus import Locus, intersect_sumstat_ld
-from mafm.utils import io_in_tempdir
+from mafm.utils import check_r_package, io_in_tempdir
 
 logger = logging.getLogger("CARMA")
 
@@ -88,6 +88,8 @@ def run_carma(
     The function interfaces with the R package CARMA through rpy2 to perform
     Bayesian fine-mapping of GWAS loci.
     """
+    if not check_r_package("CARMA"):
+        raise RuntimeError("CARMA is not installed or R version is not supported.")
     if not locus.is_matched:
         logger.warning("The sumstat and LD are not matched, will match them in same order.")
         locus = intersect_sumstat_ld(locus)
