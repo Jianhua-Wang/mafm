@@ -165,7 +165,7 @@ def run_finemap(
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
         tool=Method.FINEMAP,
-        n_cs=1,
+        n_cs=1 if not no_cred else 0,
         coverage=coverage,
         lead_snps=[lead_snps] if not no_cred else [],
         snps=[cs_snps] if not no_cred else [],
