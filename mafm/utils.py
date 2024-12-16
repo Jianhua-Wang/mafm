@@ -405,5 +405,5 @@ class ToolManager:
 
 
 tool_manager = ToolManager()
-for tool in ["finemap", "metal"]:
+for tool in ["finemap", "SuSiEx"]:
     tool_manager.register_tool(tool, f"bin/{tool}")

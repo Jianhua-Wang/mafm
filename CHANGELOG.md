@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.10] (2024-12-15)
+
+### Added
+- susiex
+- Rsparseld
+- CARMA
+
 ## [0.0.9] (2024-10-21)
 
 ### Added

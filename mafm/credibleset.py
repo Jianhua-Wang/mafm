@@ -217,7 +217,7 @@ def combine_creds(
         List of credible sets from multiple tools.
     combine_cred : str, optional
         Method to combine credible sets, by default "union".
-        Options: "union", "intersection", "cluster", "fgfm".
+        Options: "union", "intersection", "cluster".
         "union":        Union of all credible sets to form a merged credible set.
         "intersection": Frist merge the credible sets from the same tool,
                         then take the intersection of all merged credible sets.
@@ -280,7 +280,7 @@ def combine_creds(
         tool=creds[0].tool,
         n_cs=len(merged_snps),
         coverage=creds[0].coverage,
-        lead_snps=[],
+        lead_snps=[str(merged_pips[merged_pips.index.isin(snp)].idxmax()) for snp in merged_snps],
         snps=merged_snps,
         cs_sizes=[len(i) for i in merged_snps],
         pips=merged_pips,
