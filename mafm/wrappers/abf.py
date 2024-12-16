@@ -1,8 +1,8 @@
 """Warpper of ABF fine-mapping method."""
 
+import json
 import logging
 from typing import List
-import json
 
 import numpy as np
 import pandas as pd
@@ -81,58 +81,3 @@ def run_abf(locus: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior
         pips=pips,
         parameters=parameters,
     )
-
-
-def run_abf_multi(
-    inputs: List[Locus],
-    max_causal: int = 1,
-    coverage: float = 0.95,
-    var_prior: float = 0.2,
-    combine_cred: str = "union",
-    combine_pip: str = "max",
-    jaccard_threshold: float = 0.1,
-) -> CredibleSet:
-    """
-    Run ABF for multiple datasets.
-
-    Run ABF for each dataset in the input list. Then combine the results.
-
-    Parameters
-    ----------
-    inputs : List[FmInput]
-        List of input data.
-    max_causal : int, optional
-        Maximum number of causal variants, by default 1, only support 1.
-    coverage : float, optional
-        Coverage, by default 0.95
-    var_prior : float, optional
-        Variance prior, by default 0.2, usually set to 0.15 for quantitative traits
-        and 0.2 for binary traits.
-        combine_cred : str, optional
-        Method to combine credible sets, by default "union".
-        Options: "union", "intersection", "cluster", "fgfm".
-        "union":        Union of all credible sets to form a merged credible set.
-        "intersection": Frist merge the credible sets from the same tool,
-                        then take the intersection of all merged credible sets.
-                        no credible set will be returned if no common SNPs found.
-        "cluster":      Merge credible sets with Jaccard index > 0.1.
-    combine_pip : str, optional
-        Method to combine PIPs, by default "max".
-        Options: "max", "min", "mean", "meta".
-        "meta": PIP_meta = 1 - prod(1 - PIP_i), where i is the index of tools,
-                PIP_i = 0 when the SNP is not in the credible set of the tool.
-        "max":  Maximum PIP value for each SNP across all tools.
-        "min":  Minimum PIP value for each SNP across all tools.
-        "mean": Mean PIP value for each SNP across all tools.
-    jaccard_threshold : float, optional
-        Jaccard index threshold for the "cluster" method, by default 0.1.
-
-    Returns
-    -------
-    CredibleSet
-        Credible sets for ABF.
-    """
-    out_cred = []
-    for locus in inputs:
-        out_cred.append(run_abf(locus, max_causal, coverage, var_prior))
-    return combine_creds(out_cred, combine_cred, combine_pip, jaccard_threshold)

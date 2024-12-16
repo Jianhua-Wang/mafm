@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.12] (2024-12-15)
+
+### Added
+- ensemble fine-mapping
+
 ## [0.0.11] (2024-12-15)
 
 ### Added

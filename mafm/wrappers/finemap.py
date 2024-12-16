@@ -160,7 +160,9 @@ def run_finemap(
 
     # output
     logger.info(f"Fished FINEMAP on {locus}")
-    logger.warning('FINEMAP outputs configuration file, not credible set. Concatenate the configurations to one credible set.')
+    logger.warning(
+        "FINEMAP outputs configuration file, not credible set. Concatenate the configurations to one credible set."
+    )
     logger.info("N of credible set: 1")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
@@ -171,61 +173,5 @@ def run_finemap(
         snps=[cs_snps] if not no_cred else [],
         cs_sizes=[len(cs_snps)] if not no_cred else [],
         pips=pip,
-        parameters={"max_causal": max_causal, "method": "sss", "n_iter": n_iter},
+        parameters=parameters,
     )
-
-
-def run_finemap_multi(
-    inputs: list[Locus],
-    max_causal: int = 1,
-    coverage: float = 0.95,
-    n_iter: int = 100000,
-    n_threads: int = 1,
-    combine_cred: str = "union",
-    combine_pip: str = "max",
-    jaccard_threshold: float = 0.1,
-) -> CredibleSet:
-    """
-    Run FINEMAP for multiple datasets.
-
-    Run FINEMAP for each dataset in the input list. Then combine the results.
-
-    Parameters
-    ----------
-    inputs : list[FmInput]
-        List of input data.
-    max_causal : int, optional
-        Maximum number of causal variants, by default 1, only support 1.
-    coverage : float, optional
-        Coverage, by default 0.95.
-    n_iter : int, optional
-        Number of iterations, by default 100000.
-    n_threads : int, optional
-        Number of threads, by default 1.
-    combine_cred : str, optional
-        Method to combine credible sets, by default "union".
-    combine_pip : str, optional
-        Method to combine PIPs, by default "max".
-    jaccard_threshold : float, optional
-        Jaccard index threshold for merging credible sets, by default 0.1.
-
-    Returns
-    -------
-    CredibleSet
-        Combined credible set.
-
-    """
-    logger.info("Running FINEMAP for multiple datasets.")
-    logger.info(f"max_causal={max_causal}, coverage={coverage}, n_iter={n_iter}, n_threads={n_threads}")
-    logger.info(f"combine_cred={combine_cred}, combine_pip={combine_pip}, jaccard_threshold={jaccard_threshold}")
-
-    # run FINEMAP for each dataset
-    cs_list = []
-    for input in inputs:
-        cs = run_finemap(input, max_causal, coverage, n_iter, n_threads)
-        cs_list.append(cs)
-
-    # combine credible sets
-    combined_cs = combine_creds(cs_list, combine_cred, combine_pip, jaccard_threshold)
-    logger.info("Finished FINEMAP for multiple datasets.")
-    return combined_cs

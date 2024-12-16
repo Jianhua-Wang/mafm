@@ -1,5 +1,6 @@
 """Main module."""
 
+import inspect
 import logging
 from pathlib import Path
 from typing import Dict, Optional
@@ -8,7 +9,9 @@ import numpy as np
 import pandas as pd
 import toml
 
-from mafm.credibleset import CredibleSet
+from mafm.credibleset import CredibleSet, combine_creds
+from mafm.locus import LocusSet
+from mafm.wrappers import run_abf, run_carma, run_finemap, run_multisusie, run_rsparsepro, run_susie, run_susiex
 
 logger = logging.getLogger("MAFM")
 
@@ -179,3 +182,100 @@ class FmOutput:
             cs.tool: {"n_cs": cs.n_cs, "coverage": cs.coverage, "total_snps": sum(cs.cs_sizes)}
             for cs in self.cs.values()
         }
+
+
+def fine_map(
+    locus_set: LocusSet,
+    strategy: str = "single_input",
+    tool: str = "susie",
+    max_causal: int = 1,
+    combine_cred: str = "union",
+    combine_pip: str = "max",
+    jaccard_threshold: float = 0.1,
+    **kwargs,
+) -> CredibleSet:
+    """
+    Perform fine-mapping on a locus set.
+
+    Parameters
+    ----------
+    locus_set : LocusSet
+        Locus set to fine-mapping.
+    strategy : str
+        Fine-mapping strategy. Choose from ["single_input", "multi_input", "post_hoc_combine"]
+        single_input: use fine-mapping tools which take a single locus as input, these tools are:
+            abf, carma, finemap, rsparsepro, susie
+        multi_input: use fine-mapping tools which take multiple loci as input, these tools are:
+            multisusie, susiex
+        post_hoc_combine: use fine-mapping tools which take single loci as input (see single_input options), and then combine the results,
+    tool : str
+        Fine-mapping tool. Choose from ["abf", "carma", "finemap", "rsparsepro", "susie", "multisusie", "susiex"]
+    combine_cred : str, optional
+        Method to combine credible sets, by default "union".
+        Options: "union", "intersection", "cluster".
+        "union":        Union of all credible sets to form a merged credible set.
+        "intersection": Frist merge the credible sets from the same tool,
+                        then take the intersection of all merged credible sets.
+                        no credible set will be returned if no common SNPs found.
+        "cluster":      Merge credible sets with Jaccard index > 0.1.
+    combine_pip : str, optional
+        Method to combine PIPs, by default "max".
+        Options: "max", "min", "mean", "meta".
+        "meta": PIP_meta = 1 - prod(1 - PIP_i), where i is the index of tools,
+                PIP_i = 0 when the SNP is not in the credible set of the tool.
+        "max":  Maximum PIP value for each SNP across all tools.
+        "min":  Minimum PIP value for each SNP across all tools.
+        "mean": Mean PIP value for each SNP across all tools.
+    jaccard_threshold : float, optional
+        Jaccard index threshold for the "cluster" method, by default 0.1.
+    max_causal : int, optional
+        Maximum number of causal variants, by default 1.
+    """
+    tool_func_dict = {
+        "abf": run_abf,
+        "carma": run_carma,
+        "finemap": run_finemap,
+        "rsparsepro": run_rsparsepro,
+        "susie": run_susie,
+        "multisusie": run_multisusie,
+        "susiex": run_susiex,
+    }
+    inspect_dict = {
+        "abf": set(inspect.signature(run_abf).parameters),
+        "carma": set(inspect.signature(run_carma).parameters),
+        "finemap": set(inspect.signature(run_finemap).parameters),
+        "rsparsepro": set(inspect.signature(run_rsparsepro).parameters),
+        "susie": set(inspect.signature(run_susie).parameters),
+        "multisusie": set(inspect.signature(run_multisusie).parameters),
+        "susiex": set(inspect.signature(run_susiex).parameters),
+    }
+    params_dict = {}
+    for t, args in inspect_dict.items():
+        params_dict[t] = {k: v for k, v in kwargs.items() if k in args}
+    if strategy == "single_input":
+        if locus_set.n_loci > 1:
+            raise ValueError("Locus set must contain only one locus for single-input strategy")
+        if tool in ["abf", "carma", "finemap", "rsparsepro", "susie"]:
+            return tool_func_dict[tool](locus_set.loci[0], **params_dict[tool])
+        else:
+            raise ValueError(f"Tool {tool} not supported for single-input strategy")
+    elif strategy == "multi_input":
+        if locus_set.n_loci < 2:
+            raise ValueError("Locus set must contain at least two loci for multi-input strategy")
+        if tool in ["multisusie", "susiex"]:
+            return tool_func_dict[tool](locus_set, **params_dict[tool])
+        else:
+            raise ValueError(f"Tool {tool} not supported for multi-input strategy")
+    elif strategy == "post_hoc_combine":
+        if locus_set.n_loci < 2:
+            raise ValueError("Locus set must contain at least two loci for post-hoc combine strategy")
+        if tool in ["abf", "carma", "finemap", "rsparsepro", "susie"]:
+            all_creds = []
+            for locus in locus_set.loci:
+                creds = tool_func_dict[tool](locus, max_causal=max_causal, **params_dict[tool])
+                all_creds.append(creds)
+            return combine_creds(all_creds, combine_cred=combine_cred, combine_pip=combine_pip, jaccard_threshold=jaccard_threshold)
+        else:
+            raise ValueError(f"Tool {tool} not supported for post-hoc combine strategy")
+    else:
+        raise ValueError(f"Strategy {strategy} not supported")
