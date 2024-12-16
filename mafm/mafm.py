@@ -1,7 +1,9 @@
 """Main module."""
 
 import inspect
+import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -10,7 +12,9 @@ import pandas as pd
 import toml
 
 from mafm.credibleset import CredibleSet, combine_creds
-from mafm.locus import LocusSet
+from mafm.locus import LocusSet, load_locus_set
+from mafm.meta import meta
+from mafm.qc import locus_qc
 from mafm.wrappers import run_abf, run_carma, run_finemap, run_multisusie, run_rsparsepro, run_susie, run_susiex
 
 logger = logging.getLogger("MAFM")
@@ -274,8 +278,63 @@ def fine_map(
             for locus in locus_set.loci:
                 creds = tool_func_dict[tool](locus, max_causal=max_causal, **params_dict[tool])
                 all_creds.append(creds)
-            return combine_creds(all_creds, combine_cred=combine_cred, combine_pip=combine_pip, jaccard_threshold=jaccard_threshold)
+            return combine_creds(
+                all_creds, combine_cred=combine_cred, combine_pip=combine_pip, jaccard_threshold=jaccard_threshold
+            )
         else:
             raise ValueError(f"Tool {tool} not supported for post-hoc combine strategy")
     else:
         raise ValueError(f"Strategy {strategy} not supported")
+
+
+def pipeline(
+    loci_df: pd.DataFrame,
+    meta_method: str = "meta_all",
+    skip_qc: bool = False,
+    strategy: str = "single_input",
+    tool: str = "susie",
+    outdir: str = ".",
+    **kwargs,
+):
+    """
+    Run whole fine-mapping pipeline on a list of loci.
+
+    Parameters
+    ----------
+    loci_df : pd.DataFrame
+        Dataframe containing the locus information.
+    meta_method : str, optional
+        Meta-analysis method, by default "meta_all"
+        Options: "meta_all", "meta_by_population", "no_meta".
+    skip_qc : bool, optional
+        Skip QC, by default False.
+    strategy : str, optional
+        Fine-mapping strategy, by default "single_input".
+    tool : str, optional
+        Fine-mapping tool, by default "susie".
+    """
+    if not os.path.exists(outdir):
+        os.makedirs(outdir)
+    locus_set = load_locus_set(loci_df)
+    # meta-analysis
+    locus_set = meta(locus_set, meta_method=meta_method)
+    logger.info(f"Meta-analysis complete, {locus_set.n_loci} loci loaded.")
+    logger.info(f"Save meta-analysis results to {outdir}.")
+    for locus in locus_set.loci:
+        out_prefix = f"{outdir}/{locus.prefix}"
+        locus.sumstats.to_csv(f"{out_prefix}.sumstat", sep="\t", index=False)
+        np.savez_compressed(f"{out_prefix}.ld.npz", ld=locus.ld.r.astype(np.float16))
+        locus.ld.map.to_csv(f"{out_prefix}.ldmap", sep="\t", index=False)
+    # QC
+    if not skip_qc:
+        qc_metrics = locus_qc(locus_set)
+        logger.info(f"QC complete, {qc_metrics.keys()} metrics saved.")
+        for k, v in qc_metrics.items():
+            v.to_csv(f"{outdir}/{k}.txt", sep="\t", index=False)
+    # fine-mapping
+    creds = fine_map(locus_set, strategy=strategy, tool=tool, **kwargs)
+    creds.pips.to_csv(f"{outdir}/pips.txt", sep="\t", header=False, index=True)
+    with open(f"{outdir}/creds.json", "w") as f:
+        json.dump(creds.to_dict(), f)
+    logger.info(f"Fine-mapping complete, {creds.n_cs} credible sets saved.")
+    return

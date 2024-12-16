@@ -129,6 +129,11 @@ class Locus:
         return len(self.sumstats)
 
     @property
+    def prefix(self):
+        """Get the prefix of the locus."""
+        return f"{self.popu}_{self.cohort}"
+
+    @property
     def locus_id(self):
         """Get the locus ID."""
         return f"{self.popu}_{self.cohort}_chr{self.chrom}:{self.start}-{self.end}"
@@ -352,7 +357,8 @@ def load_locus_set(locus_info: pd.DataFrame, if_intersect: bool = False, **kwarg
     missing_cols = [col for col in required_cols if col not in locus_info.columns]
     if len(missing_cols) > 0:
         raise ValueError(f"The following columns are required: {missing_cols}")
-    # TODO: make sure the combination of popu and cohort is unique
+    if locus_info.duplicated(subset=["popu", "cohort"]).any():
+        raise ValueError("The combination of popu and cohort is not unique.")
     loci = []
     for i, row in locus_info.iterrows():
         loci.append(load_locus(row["prefix"], row["popu"], row["cohort"], row["sample_size"], if_intersect, **kwargs))
