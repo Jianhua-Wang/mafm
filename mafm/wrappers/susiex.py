@@ -148,7 +148,7 @@ def run_susiex(
         pip = pd.Series(index=pip_df["SNP"].values.tolist())
     else:
         cs_df = pd.read_csv(f"{temp_dir}/chr{chrom}_{start}_{end}.cs", sep="\t")
-        for cs_idx, sub_df in cs_df.groupby("CS_ID"):
+        for _, sub_df in cs_df.groupby("CS_ID"):
             cs_snp.append(sub_df["SNP"].values.tolist())
         pip_cols = [col for col in pip_df.columns if col.startswith("PIP")]
         pip_df = pip_df[pip_cols + ["SNP"]].copy()
@@ -156,6 +156,9 @@ def run_susiex(
         pip_df["PIP"] = pip_df[pip_cols].max(axis=1)
         pip = pd.Series(index=pip_df.index.values.tolist(), data=pip_df["PIP"].values.tolist())
 
+    logger.info(f"Fished SuSiEx on {locus_set}")
+    logger.info(f"N of credible set: {len(cs_snp)}")
+    logger.info(f"Credible set size: {[len(i) for i in cs_snp]}")
     return CredibleSet(
         tool=Method.SUSIEX,
         n_cs=len(cs_snp),

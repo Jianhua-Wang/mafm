@@ -10,7 +10,7 @@ import numpy as np
 from scipy.optimize import minimize_scalar
 from tqdm import tqdm
 
-logger = logging.getLogger("MultiSuSiE")
+logger = logging.getLogger("MULTISUSIE")
 
 
 class S:
@@ -86,7 +86,7 @@ def multisusie_rss(
     tol=1e-3,
     verbose=False,
     coverage=0.95,
-    min_abs_corr=0,
+    min_abs_corr=0.0,
     float_type=np.float32,
     low_memory_mode=False,
     recover_R=False,

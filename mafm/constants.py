@@ -66,6 +66,7 @@ class Method:
     CARMA = "CARMA"
     RSparsePro = "RSparsePro"
     SUSIEX = "SUSIEX"
+    MULTISUSIE = "MULTISUSIE"
 
 # only support autosomes
 CHROM_LIST = [i for i in range(1, 24)]
