@@ -335,6 +335,6 @@ def pipeline(
     creds = fine_map(locus_set, strategy=strategy, tool=tool, **kwargs)
     creds.pips.to_csv(f"{outdir}/pips.txt", sep="\t", header=False, index=True)
     with open(f"{outdir}/creds.json", "w") as f:
-        json.dump(creds.to_dict(), f)
+        json.dump(creds.to_dict(), f, indent=4)
     logger.info(f"Fine-mapping complete, {creds.n_cs} credible sets saved.")
     return
