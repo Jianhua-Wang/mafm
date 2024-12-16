@@ -1,7 +1,7 @@
 [tool]
 [tool.poetry]
 name = "mafm"
-version = "0.0.12"
+version = "0.0.13"
 homepage = "https://github.com/Jianhua-Wang/mafm"
 description = "multi-ancestry fine-mapping pipeline."
 authors = ["Jianhua Wang <jianhua.mert@gmail.com>"]
