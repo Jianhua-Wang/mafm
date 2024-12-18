@@ -412,6 +412,8 @@ def run_rsparsepro(
             The coverage.
         maxite : int
             The maximum number of iterations.
+        eps : float
+            The convergence criterion.
         ubound : int
             The upper bound for convergence.
         cthres : float
