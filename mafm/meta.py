@@ -1,14 +1,16 @@
 """Meta analysis of multi-ancestry gwas data."""
 
 import logging
-
+import os
+from multiprocessing import Pool
 import numpy as np
 import pandas as pd
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 from scipy import stats
 
 from mafm.constants import ColName
 from mafm.ldmatrix import LDMatrix
-from mafm.locus import Locus, LocusSet, intersect_sumstat_ld
+from mafm.locus import Locus, LocusSet, intersect_sumstat_ld, load_locus_set
 from mafm.sumstats import munge
 
 logger = logging.getLogger("META")
@@ -244,3 +246,102 @@ def meta(
         return LocusSet([intersect_sumstat_ld(i) for i in inputs.loci])
     else:
         raise ValueError(f"Unsupported meta-analysis method: {meta_method}")
+
+
+def meta_locus(args):
+    """
+    Process a single locus for meta-analysis.
+
+    Args
+    ----
+        args: A tuple containing (locus_id, locus_info, outdir, meta_method).
+            locus_id: The ID of the locus.
+            locus_info: DataFrame containing locus information.
+            outdir: Output directory path.
+            meta_method: Method for meta-analysis.
+
+    Returns
+    -------
+        list: A list of results containing processed locus information.
+    """
+    locus_id, locus_info, outdir, meta_method = args
+    results = []
+    locus_set = load_locus_set(locus_info)
+    locus_set = meta(locus_set, meta_method)
+    out_dir = f"{outdir}/{locus_id}"
+    out_dir = os.path.abspath(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+
+    for locus in locus_set.loci:
+        out_prefix = f"{out_dir}/{locus.prefix}"
+        locus.sumstats.to_csv(f"{out_prefix}.sumstats.gz", sep="\t", index=False, compression="gzip")
+        np.savez_compressed(f"{out_prefix}.ld.npz", ld=locus.ld.r.astype(np.float16))
+        locus.ld.map.to_csv(f"{out_prefix}.ldmap.gz", sep="\t", index=False, compression="gzip")
+        results.append(
+            [
+                locus.chrom,
+                locus.start,
+                locus.end,
+                locus.popu,
+                locus.sample_size,
+                locus.cohort,
+                out_prefix,
+                f"chr{locus.chrom}_{locus.start}_{locus.end}",
+            ]
+        )
+    return results
+
+
+def meta_loci(
+    inputs: str,
+    outdir: str,
+    threads: int = 1,
+    meta_method: str = "meta_all",
+):
+    """
+    Meta-analysis of summary statistics and LD matrices.
+
+    Parameters
+    ----------
+    inputs : str
+        Input files.
+    outdir : str
+        Output directory.
+    threads : int, optional
+        Number of threads, by default 1.
+    meta_method : str, optional
+        Meta-analysis method, by default "meta_all".
+
+    Returns
+    -------
+    None
+    """
+    loci_info = pd.read_csv(inputs, sep="\t")
+    new_loci_info = pd.DataFrame(columns=loci_info.columns)
+
+    # Group loci by locus_id
+    grouped_loci = list(loci_info.groupby("locus_id"))
+    total_loci = len(grouped_loci)
+    os.makedirs(outdir, exist_ok=True)
+
+    # Create process pool and process loci in parallel with progress bar
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+    ) as progress:
+        task = progress.add_task("[cyan]Meta-analysing...", total=total_loci)
+
+        with Pool(threads) as pool:
+            args = [(locus_id, locus_info, outdir, meta_method) for locus_id, locus_info in grouped_loci]
+            for result in pool.imap_unordered(meta_locus, args):
+                # Update results
+                for i, res in enumerate(result):
+                    new_loci_info.loc[len(new_loci_info)] = res
+                # Update progress
+                progress.advance(task)
+
+    new_loci_info.to_csv(f"{outdir}/loci_info.txt", sep="\t", index=False)

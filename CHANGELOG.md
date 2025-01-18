@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.17] (2025-01-18)
+
+### Added
+- support for multiprocessing
+- add progress bar
+
 ## [0.0.16] (2025-01-18)
 
 ### Added

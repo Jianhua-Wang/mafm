@@ -4,16 +4,18 @@ import json
 import logging
 import os
 from enum import Enum
+from multiprocessing import Pool
 
 import numpy as np
 import pandas as pd
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 
 from mafm import __version__
 from mafm.locus import load_locus_set
 from mafm.mafm import fine_map, pipeline
-from mafm.meta import meta
+from mafm.meta import meta_loci
 from mafm.qc import locus_qc
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
@@ -66,7 +68,21 @@ def main(
         logging.getLogger().setLevel(logging.DEBUG)
         logging.info("Verbose mode is on.")
     else:
-        for name in ["MAFM", "FINEMAP", "RSparsePro", "SUSIE", "MULTISUSIE", "SUSIEX", "CARMA", "ABF", "Locus"]:
+        for name in [
+            "MAFM",
+            "FINEMAP",
+            "RSparsePro",
+            "SUSIE",
+            "MULTISUSIE",
+            "SUSIEX",
+            "CARMA",
+            "ABF",
+            "Locus",
+            "LDMatrix",
+            "QC",
+            "Sumstats",
+            "Utils",
+        ]:
             logging.getLogger(name).setLevel(logging.INFO)
         # logging.getLogger().setLevel(logging.INFO)
         # from rpy2.rinterface_lib.callbacks import logger as rpy2_logger
@@ -81,20 +97,11 @@ def main(
 def run_meta(
     inputs: str = typer.Argument(..., help="Input files."),
     outdir: str = typer.Argument(..., help="Output directory."),
+    threads: int = typer.Option(1, "--threads", "-t", help="Number of threads."),
     meta_method: MetaMethod = typer.Option(MetaMethod.meta_all, "--meta-method", "-m", help="Meta-analysis method."),
 ):
     """Meta-analysis of summary statistics and LD matrices."""
-    loci_info = pd.read_csv(inputs, sep="\t")
-    for locus_id, locus_info in loci_info.groupby("locus_id"):
-        locus_set = load_locus_set(locus_info)
-        locus_set = meta(locus_set, meta_method)
-        out_dir = f"{outdir}/{locus_id}"
-        os.makedirs(out_dir, exist_ok=True)
-        for locus in locus_set.loci:
-            out_prefix = f"{out_dir}/{locus.prefix}"
-            locus.sumstats.to_csv(f"{out_prefix}.sumstat", sep="\t", index=False)
-            np.savez_compressed(f"{out_prefix}.ld.npz", ld=locus.ld.r.astype(np.float16))
-            locus.ld.map.to_csv(f"{out_prefix}.ldmap", sep="\t", index=False)
+    meta_loci(inputs, outdir, threads, meta_method)
 
 
 @app.command(
@@ -210,45 +217,135 @@ def run_pipeline(
     ),
     # RSparsePro parameters
     eps: float = typer.Option(1e-5, "--eps", "-e", help="Convergence criterion.", rich_help_panel="RSparsePro"),
-    ubound: int = typer.Option(100000, "--ubound", "-ub", help="Upper bound for convergence.", rich_help_panel="RSparsePro"),
+    ubound: int = typer.Option(
+        100000, "--ubound", "-ub", help="Upper bound for convergence.", rich_help_panel="RSparsePro"
+    ),
     cthres: float = typer.Option(0.7, "--cthres", "-ct", help="Threshold for coverage.", rich_help_panel="RSparsePro"),
-    eincre: float = typer.Option(1.5, "--eincre", "-ei", help="Adjustment for error parameter.", rich_help_panel="RSparsePro"),
-    minldthres: float = typer.Option(0.7, "--minldthres", "-mlt", help="Threshold for minimum LD within effect groups.", rich_help_panel="RSparsePro"),
-    maxldthres: float = typer.Option(0.2, "--maxldthres", "-mlt", help="Threshold for maximum LD across effect groups.", rich_help_panel="RSparsePro"),
-    varemax: float = typer.Option(100.0, "--varemax", "-vm", help="Maximum error parameter.", rich_help_panel="RSparsePro"),
-    varemin: float = typer.Option(1e-3, "--varemin", "-vm", help="Minimum error parameter.", rich_help_panel="RSparsePro"),
+    eincre: float = typer.Option(
+        1.5, "--eincre", "-ei", help="Adjustment for error parameter.", rich_help_panel="RSparsePro"
+    ),
+    minldthres: float = typer.Option(
+        0.7, "--minldthres", "-mlt", help="Threshold for minimum LD within effect groups.", rich_help_panel="RSparsePro"
+    ),
+    maxldthres: float = typer.Option(
+        0.2, "--maxldthres", "-mlt", help="Threshold for maximum LD across effect groups.", rich_help_panel="RSparsePro"
+    ),
+    varemax: float = typer.Option(
+        100.0, "--varemax", "-vm", help="Maximum error parameter.", rich_help_panel="RSparsePro"
+    ),
+    varemin: float = typer.Option(
+        1e-3, "--varemin", "-vm", help="Minimum error parameter.", rich_help_panel="RSparsePro"
+    ),
     # CARMA parameters
-    effect_size_prior: str = typer.Option("Spike-slab", "--effect-size-prior", "-es", help="Prior distribution for effect sizes ('Cauchy' or 'Spike-slab'), by default Spike-slab.", rich_help_panel="CARMA"),
-    input_alpha: float = typer.Option(0.0, "--input-alpha", "-ia", help="Elastic net mixing parameter (0 ≤ input_alpha ≤ 1).", rich_help_panel="CARMA"),
-    y_var: float = typer.Option(1.0, "--y-var", "-yv", help="Variance of the summary statistics.", rich_help_panel="CARMA"),
-    bf_threshold: float = typer.Option(10.0, "--bf-threshold", "-bf", help="Bayes factor threshold for credible models.", rich_help_panel="CARMA"),
-    outlier_bf_threshold: float = typer.Option(1 / 3.2, "--outlier-bf-threshold", "-obf", help="Bayes factor threshold for outlier detection.", rich_help_panel="CARMA"),
-    max_model_dim: int = typer.Option(200000, "--max-model-dim", "-mmd", help="Maximum number of top candidate models.", rich_help_panel="CARMA"),
-    all_inner_iter: int = typer.Option(10, "--all-inner-iter", "-aie", help="Maximum iterations for Shotgun algorithm within EM.", rich_help_panel="CARMA"),
-    all_iter: int = typer.Option(3, "--all-iter", "-ai", help="Maximum iterations for EM algorithm.", rich_help_panel="CARMA"),
-    tau: float = typer.Option(0.04, "--tau", "-t", help="Prior precision parameter of effect size.", rich_help_panel="CARMA"),
-    epsilon_threshold: float = typer.Option(1e-5, "--epsilon-threshold", "-et", help="Convergence threshold for Bayes factors.", rich_help_panel="CARMA"),
-    em_dist: str = typer.Option("logistic", "--em-dist", "-ed", help="Distribution for modeling prior probability.", rich_help_panel="CARMA"),
+    effect_size_prior: str = typer.Option(
+        "Spike-slab",
+        "--effect-size-prior",
+        "-es",
+        help="Prior distribution for effect sizes ('Cauchy' or 'Spike-slab'), by default Spike-slab.",
+        rich_help_panel="CARMA",
+    ),
+    input_alpha: float = typer.Option(
+        0.0, "--input-alpha", "-ia", help="Elastic net mixing parameter (0 ≤ input_alpha ≤ 1).", rich_help_panel="CARMA"
+    ),
+    y_var: float = typer.Option(
+        1.0, "--y-var", "-yv", help="Variance of the summary statistics.", rich_help_panel="CARMA"
+    ),
+    bf_threshold: float = typer.Option(
+        10.0, "--bf-threshold", "-bf", help="Bayes factor threshold for credible models.", rich_help_panel="CARMA"
+    ),
+    outlier_bf_threshold: float = typer.Option(
+        1 / 3.2,
+        "--outlier-bf-threshold",
+        "-obf",
+        help="Bayes factor threshold for outlier detection.",
+        rich_help_panel="CARMA",
+    ),
+    max_model_dim: int = typer.Option(
+        200000, "--max-model-dim", "-mmd", help="Maximum number of top candidate models.", rich_help_panel="CARMA"
+    ),
+    all_inner_iter: int = typer.Option(
+        10,
+        "--all-inner-iter",
+        "-aie",
+        help="Maximum iterations for Shotgun algorithm within EM.",
+        rich_help_panel="CARMA",
+    ),
+    all_iter: int = typer.Option(
+        3, "--all-iter", "-ai", help="Maximum iterations for EM algorithm.", rich_help_panel="CARMA"
+    ),
+    tau: float = typer.Option(
+        0.04, "--tau", "-t", help="Prior precision parameter of effect size.", rich_help_panel="CARMA"
+    ),
+    epsilon_threshold: float = typer.Option(
+        1e-5, "--epsilon-threshold", "-et", help="Convergence threshold for Bayes factors.", rich_help_panel="CARMA"
+    ),
+    em_dist: str = typer.Option(
+        "logistic", "--em-dist", "-ed", help="Distribution for modeling prior probability.", rich_help_panel="CARMA"
+    ),
     # SuSiEx parameters
     # pval_thresh: float = typer.Option(1e-5, "--pval-thresh", "-pt", help="P-value threshold for SuSiEx.", rich_help_panel="SuSiEx"),
     # maf_thresh: float = typer.Option(0.005, "--maf-thresh", "-mt", help="MAF threshold for SuSiEx.", rich_help_panel="SuSiEx"),
-    mult_step: bool = typer.Option(False, "--mult-step", "-ms", help="Whether to use multiple steps in SuSiEx.", rich_help_panel="SuSiEx"),
-    keep_ambig: bool = typer.Option(True, "--keep-ambig", "-ka", help="Whether to keep ambiguous SNPs in SuSiEx.", rich_help_panel="SuSiEx"),
+    mult_step: bool = typer.Option(
+        False, "--mult-step", "-ms", help="Whether to use multiple steps in SuSiEx.", rich_help_panel="SuSiEx"
+    ),
+    keep_ambig: bool = typer.Option(
+        True, "--keep-ambig", "-ka", help="Whether to keep ambiguous SNPs in SuSiEx.", rich_help_panel="SuSiEx"
+    ),
     # n_threads: int = typer.Option(1, "--n-threads", "-nt", help="Number of threads.", rich_help_panel="SuSiEx"),
-    min_purity: float = typer.Option(0.5, "--min-purity", "-mp", help="Minimum purity for SuSiEx.", rich_help_panel="SuSiEx"),
+    min_purity: float = typer.Option(
+        0.5, "--min-purity", "-mp", help="Minimum purity for SuSiEx.", rich_help_panel="SuSiEx"
+    ),
     # max_iter: int = typer.Option(100, "--max-iter", "-i", help="Maximum number of iterations.", rich_help_panel="SuSiEx"),
     tol: float = typer.Option(1e-3, "--tol", "-t", help="Convergence tolerance.", rich_help_panel="SuSiEx"),
     # MULTISUSIE parameters
-    rho: float = typer.Option(0.75, "--rho", "-r", help="The prior correlation between causal variants.", rich_help_panel="MULTISUSIE"),
-    scaled_prior_variance: float = typer.Option(0.2, "--scaled-prior-variance", "-spv", help="The scaled prior variance.", rich_help_panel="MULTISUSIE"),
-    standardize: bool = typer.Option(False, "--standardize", "-s", help="Whether to standardize the summary statistics.", rich_help_panel="MULTISUSIE"),
-    pop_spec_standardization: bool = typer.Option(True, "--pop-spec-standardization", "-pss", help="Whether to use population-specific standardization.", rich_help_panel="MULTISUSIE"),
+    rho: float = typer.Option(
+        0.75, "--rho", "-r", help="The prior correlation between causal variants.", rich_help_panel="MULTISUSIE"
+    ),
+    scaled_prior_variance: float = typer.Option(
+        0.2, "--scaled-prior-variance", "-spv", help="The scaled prior variance.", rich_help_panel="MULTISUSIE"
+    ),
+    standardize: bool = typer.Option(
+        False,
+        "--standardize",
+        "-s",
+        help="Whether to standardize the summary statistics.",
+        rich_help_panel="MULTISUSIE",
+    ),
+    pop_spec_standardization: bool = typer.Option(
+        True,
+        "--pop-spec-standardization",
+        "-pss",
+        help="Whether to use population-specific standardization.",
+        rich_help_panel="MULTISUSIE",
+    ),
     # estimate_residual_variance: bool = typer.Option(True, "--estimate-residual-variance", "-er", help="Estimate residual variance.", rich_help_panel="MULTISUSIE"),
-    estimate_prior_variance: bool = typer.Option(True, "--estimate-prior-variance", "-epv", help="Estimate prior variance.", rich_help_panel="MULTISUSIE"),
-    estimate_prior_method: str = typer.Option("early_EM", "--estimate-prior-method", "-epm", help="Method to estimate prior variance.", rich_help_panel="MULTISUSIE"),
-    pop_spec_effect_priors: bool = typer.Option(True, "--pop-spec-effect-priors", "-pesp", help="Whether to use population-specific effect priors.", rich_help_panel="MULTISUSIE"),
-    iter_before_zeroing_effects: int = typer.Option(5, "--iter-before-zeroing-effects", "-ibe", help="Number of iterations before zeroing out effects.", rich_help_panel="MULTISUSIE"),
-    prior_tol: float = typer.Option(1e-9, "--prior-tol", "-pt", help="Tolerance for prior variance.", rich_help_panel="MULTISUSIE"),
+    estimate_prior_variance: bool = typer.Option(
+        True, "--estimate-prior-variance", "-epv", help="Estimate prior variance.", rich_help_panel="MULTISUSIE"
+    ),
+    estimate_prior_method: str = typer.Option(
+        "early_EM",
+        "--estimate-prior-method",
+        "-epm",
+        help="Method to estimate prior variance.",
+        rich_help_panel="MULTISUSIE",
+    ),
+    pop_spec_effect_priors: bool = typer.Option(
+        True,
+        "--pop-spec-effect-priors",
+        "-pesp",
+        help="Whether to use population-specific effect priors.",
+        rich_help_panel="MULTISUSIE",
+    ),
+    iter_before_zeroing_effects: int = typer.Option(
+        5,
+        "--iter-before-zeroing-effects",
+        "-ibe",
+        help="Number of iterations before zeroing out effects.",
+        rich_help_panel="MULTISUSIE",
+    ),
+    prior_tol: float = typer.Option(
+        1e-9, "--prior-tol", "-pt", help="Tolerance for prior variance.", rich_help_panel="MULTISUSIE"
+    ),
     # min_abs_corr: float = typer.Option(0, "--min-abs-corr", "-mc", help="Minimum absolute correlation.", rich_help_panel="MULTISUSIE"),
     # max_iter: int = typer.Option(100, "--max-iter", "-i", help="Maximum number of iterations.", rich_help_panel="MULTISUSIE"),
     # tol: float = typer.Option(1e-3, "--tol", "-t", help="Convergence tolerance.", rich_help_panel="MULTISUSIE"),
