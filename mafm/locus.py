@@ -296,7 +296,9 @@ def intersect_loci(list_loci: list[Locus]) -> list[Locus]:
     list[Locus]
         List of Locus objects containing the intersected LD matrices and sumstats files.
     """
-    raise NotImplementedError("Intersect the Variant IDs in the LD matrices and the sumstats files of a list of Locus objects.")
+    raise NotImplementedError(
+        "Intersect the Variant IDs in the LD matrices and the sumstats files of a list of Locus objects."
+    )
 
 
 def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = False, **kwargs) -> Locus:
@@ -326,13 +328,27 @@ def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_interse
     ValueError
         If the input files are not found.
     """
-    sumstats = load_sumstats(f"{prefix}.sumstat", if_sort_alleles=True, **kwargs)
+    if os.path.exists(f"{prefix}.sumstat"):
+        sumstats_path = f"{prefix}.sumstat"
+    elif os.path.exists(f"{prefix}.sumstats.gz"):
+        sumstats_path = f"{prefix}.sumstats.gz"
+    else:
+        raise ValueError("Sumstats file not found.")
+
+    sumstats = load_sumstats(sumstats_path, if_sort_alleles=True, **kwargs)
     if os.path.exists(f"{prefix}.ld"):
-        ld = load_ld(f"{prefix}.ld", f"{prefix}.ldmap", if_sort_alleles=True, **kwargs)
+        ld_path = f"{prefix}.ld"
     elif os.path.exists(f"{prefix}.ld.npz"):
-        ld = load_ld(f"{prefix}.ld.npz", f"{prefix}.ldmap", if_sort_alleles=True, **kwargs)
+        ld_path = f"{prefix}.ld.npz"
     else:
         raise ValueError("LD matrix file not found.")
+    if os.path.exists(f"{prefix}.ldmap"):
+        ldmap_path = f"{prefix}.ldmap"
+    elif os.path.exists(f"{prefix}.ldmap.gz"):
+        ldmap_path = f"{prefix}.ldmap.gz"
+    else:
+        raise ValueError("LD map file not found.")
+    ld = load_ld(ld_path, ldmap_path, if_sort_alleles=True, **kwargs)
 
     return Locus(popu, cohort, sample_size, sumstats=sumstats, ld=ld, if_intersect=if_intersect)
 

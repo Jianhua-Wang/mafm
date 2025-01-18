@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.16] (2025-01-18)
+
+### Added
+- support for sumstats.gz and ldmap.gz
+
+
 ## [0.0.15] (2024-12-17)
 
 ### Added
