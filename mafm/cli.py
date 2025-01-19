@@ -16,7 +16,7 @@ from mafm import __version__
 from mafm.locus import load_locus_set
 from mafm.mafm import fine_map, pipeline
 from mafm.meta import meta_loci
-from mafm.qc import locus_qc
+from mafm.qc import loci_qc
 
 CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 app = typer.Typer(context_settings=CONTEXT_SETTINGS, add_completion=False)
@@ -72,7 +72,7 @@ def main(
             "MAFM",
             "FINEMAP",
             "RSparsePro",
-            "SUSIE",
+            "SuSiE",
             "MULTISUSIE",
             "SUSIEX",
             "CARMA",
@@ -111,16 +111,10 @@ def run_meta(
 def run_qc(
     inputs: str = typer.Argument(..., help="Input files."),
     outdir: str = typer.Argument(..., help="Output directory."),
+    threads: int = typer.Option(1, "--threads", "-t", help="Number of threads."),
 ):
     """Quality control of summary statistics and LD matrices."""
-    loci_info = pd.read_csv(inputs, sep="\t")
-    for locus_id, locus_info in loci_info.groupby("locus_id"):
-        locus_set = load_locus_set(locus_info)
-        qc_metrics = locus_qc(locus_set)
-        out_dir = f"{outdir}/{locus_id}"
-        os.makedirs(out_dir, exist_ok=True)
-        for k, v in qc_metrics.items():
-            v.to_csv(f"{out_dir}/{k}.txt", sep="\t", index=False)
+    loci_qc(inputs, outdir, threads)
 
 
 @app.command(
@@ -149,28 +143,47 @@ def run_fine_map(
 ):
     """Perform fine-mapping on three strategies."""
     loci_info = pd.read_csv(inputs, sep="\t")
-    for locus_id, locus_info in loci_info.groupby("locus_id"):
-        locus_set = load_locus_set(locus_info)
-        creds = fine_map(
-            locus_set,
-            strategy=strategy,
-            tool=tool,
-            max_causal=max_causal,
-            coverage=coverage,
-            combine_cred=combine_cred,
-            combine_pip=combine_pip,
-            jaccard_threshold=jaccard_threshold,
-            # susie parameters
-            max_iter=max_iter,
-            estimate_residual_variance=estimate_residual_variance,
-            min_abs_corr=min_abs_corr,
-            convergence_tol=convergence_tol,
-        )
-        out_dir = f"{outdir}/{locus_id}"
-        os.makedirs(out_dir, exist_ok=True)
-        creds.pips.to_csv(f"{out_dir}/pips.txt", sep="\t", header=False, index=True)
-        with open(f"{out_dir}/creds.json", "w") as f:
-            json.dump(creds.to_dict(), f, indent=4)
+    # Create progress bar
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("•"),
+        TimeRemainingColumn(),
+    )
+
+    # Get total number of loci
+    locus_groups = list(loci_info.groupby("locus_id"))
+    total_loci = len(locus_groups)
+
+    with progress:
+        task = progress.add_task("[cyan]Fine-mapping loci...", total=total_loci)
+
+        for locus_id, locus_info in locus_groups:
+            locus_set = load_locus_set(locus_info)
+            creds = fine_map(
+                locus_set,
+                strategy=strategy,
+                tool=tool,
+                max_causal=max_causal,
+                coverage=coverage,
+                combine_cred=combine_cred,
+                combine_pip=combine_pip,
+                jaccard_threshold=jaccard_threshold,
+                # susie parameters
+                max_iter=max_iter,
+                estimate_residual_variance=estimate_residual_variance,
+                min_abs_corr=min_abs_corr,
+                convergence_tol=convergence_tol,
+            )
+            out_dir = f"{outdir}/{locus_id}"
+            os.makedirs(out_dir, exist_ok=True)
+            creds.pips.to_csv(f"{out_dir}/pips.txt", sep="\t", header=False, index=True)
+            with open(f"{out_dir}/creds.json", "w") as f:
+                json.dump(creds.to_dict(), f, indent=4)
+
+            progress.advance(task)
 
 
 @app.command(

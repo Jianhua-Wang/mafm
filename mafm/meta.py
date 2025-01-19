@@ -277,16 +277,17 @@ def meta_locus(args):
         locus.sumstats.to_csv(f"{out_prefix}.sumstats.gz", sep="\t", index=False, compression="gzip")
         np.savez_compressed(f"{out_prefix}.ld.npz", ld=locus.ld.r.astype(np.float16))
         locus.ld.map.to_csv(f"{out_prefix}.ldmap.gz", sep="\t", index=False, compression="gzip")
+        chrom, start, end = locus.prefix.split("_")
         results.append(
             [
-                locus.chrom,
-                locus.start,
-                locus.end,
+                int(chrom[3:]),
+                int(start),
+                int(end),
                 locus.popu,
                 locus.sample_size,
                 locus.cohort,
                 out_prefix,
-                f"chr{locus.chrom}_{locus.start}_{locus.end}",
+                locus.prefix,
             ]
         )
     return results

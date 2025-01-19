@@ -265,7 +265,9 @@ def intersect_sumstat_ld(locus: Locus) -> Locus:
     if len(intersec_variants) == 0:
         raise ValueError("No common Variant IDs found between the LD matrix and the sumstats file.")
     elif len(intersec_variants) <= 10:
-        logger.warning("Only a few common Variant IDs found between the LD matrix and the sumstats file(<= 10).")
+        logger.warning(
+            f"Only a few common Variant IDs found between the LD matrix and the sumstats file(<= 10) for locus {locus.locus_id}."
+        )
     ldmap["idx"] = ldmap.index
     ldmap.set_index(ColName.SNPID, inplace=True, drop=False)
     ldmap = ldmap.loc[intersec_variants].copy()

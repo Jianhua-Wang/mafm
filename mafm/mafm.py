@@ -260,14 +260,14 @@ def fine_map(
         if locus_set.n_loci > 1:
             raise ValueError("Locus set must contain only one locus for single-input strategy")
         if tool in ["abf", "carma", "finemap", "rsparsepro", "susie"]:
-            return tool_func_dict[tool](locus_set.loci[0], **params_dict[tool])
+            return tool_func_dict[tool](locus_set.loci[0], max_causal=max_causal, **params_dict[tool])
         else:
             raise ValueError(f"Tool {tool} not supported for single-input strategy")
     elif strategy == "multi_input":
         if locus_set.n_loci < 2:
             raise ValueError("Locus set must contain at least two loci for multi-input strategy")
         if tool in ["multisusie", "susiex"]:
-            return tool_func_dict[tool](locus_set, **params_dict[tool])
+            return tool_func_dict[tool](locus_set, max_causal=max_causal, **params_dict[tool])
         else:
             raise ValueError(f"Tool {tool} not supported for multi-input strategy")
     elif strategy == "post_hoc_combine":

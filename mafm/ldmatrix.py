@@ -294,6 +294,7 @@ def load_ld(ld_path: str, map_path: str, delimiter: str = "\t", if_sort_alleles:
         raise ValueError(
             "The number of variants in the map file does not match the number of rows in the LD matrix.\n"
             f"Number of variants in the map file: {map_df.shape[0]}, number of rows in the LD matrix: {ld_df.shape[0]}"
+            f"ld_path: {ld_path}, map_path: {map_path}"
         )
     ld = LDMatrix(map_df, ld_df)
     if if_sort_alleles:

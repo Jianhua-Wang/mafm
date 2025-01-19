@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.21] (2025-01-20)
+
+### Fixed
+- fix no install error for carma
+
 ## [0.0.20] (2025-01-20)
 
 ### Fixed
