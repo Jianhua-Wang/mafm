@@ -172,13 +172,14 @@ def run_multisusie(
     cs_snp = []
     for cs_snp_idx in ss_fit.sets[0]:
         if len(cs_snp_idx) > 0 and len(cs_snp_idx) < len(pip):
-            cs_snp.append(all_variants[ColName.SNPID].to_numpy()[cs_snp_idx])
+            snps = all_variants[ColName.SNPID].to_numpy()[cs_snp_idx]
+            cs_snp.append(snps.tolist())
     cs_sizes = [len(snpids) for snpids in cs_snp]
     lead_snps = [str(pip[pip.index.isin(snpids)].idxmax()) for snpids in cs_snp]
 
     logger.info(f"Finished MultiSuSiE on {locus_set}")
     logger.info(f"N of credible set: {len(cs_snp)}")
-    logger.info(f"Credible set size: {[len(i) for i in cs_snp]}")
+    logger.info(f"Credible set size: {cs_sizes}")
 
     return CredibleSet(
         tool=Method.MULTISUSIE,

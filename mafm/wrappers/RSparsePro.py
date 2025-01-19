@@ -479,13 +479,16 @@ def run_rsparsepro(
             continue
         cs_snps.append(sub_df["SNPID"].values.tolist())
         lead_snps.append(pips[pips.index.isin(sub_df["SNPID"].values)].idxmax())
+    cs_sizes = [len(i) for i in cs_snps]
+    logger.info(f"N of credible set: {len(cs_snps)}")
+    logger.info(f"Credible set size: {cs_sizes}")
     return CredibleSet(
         tool=Method.RSparsePro,
         n_cs=len(cs_snps),
         coverage=coverage,
         lead_snps=lead_snps,
         snps=cs_snps,
-        cs_sizes=[len(i) for i in cs_snps],
+        cs_sizes=cs_sizes,
         pips=pips,
         parameters=parameters,
     )

@@ -1,17 +1,20 @@
 """Quality control functions for MAFM data."""
 
 import logging
+import os
+from multiprocessing import Pool
 from typing import Any, Dict, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
 from scipy import stats
 from scipy.optimize import curve_fit, minimize_scalar
 from sklearn.mixture import GaussianMixture
 
 from mafm.constants import ColName
-from mafm.locus import Locus, LocusSet, intersect_sumstat_ld
+from mafm.locus import Locus, LocusSet, intersect_sumstat_ld, load_locus_set
 
 logger = logging.getLogger("QC")
 
@@ -208,6 +211,8 @@ def kriging_rss(
     a_min = 0.8
     a_max = 2 if np.max(z_std_diff**2) < 1 else 2 * np.sqrt(np.max(z_std_diff**2))
     npoint = int(np.ceil(np.log2(a_max / a_min) / np.log2(1.05)))
+    # Ensure npoint doesn't exceed number of samples
+    npoint = min(npoint, len(z) - 1)
     a_grid = 1.05 ** np.arange(-npoint, 1) * a_max
 
     # Compute likelihood
@@ -304,7 +309,7 @@ def compare_maf(locus: Locus) -> pd.DataFrame:
     df = input_locus.sumstats[[ColName.SNPID, ColName.MAF]].copy()
     df.rename(columns={ColName.MAF: "MAF_sumstats"}, inplace=True)
     df.set_index(ColName.SNPID, inplace=True)
-    af_ld = pd.Series(index=input_locus.ld.map[ColName.SNPID], data=input_locus.ld.map["AF2"])
+    af_ld = pd.Series(index=input_locus.ld.map[ColName.SNPID].tolist(), data=input_locus.ld.map["AF2"].values)
     maf_ld = np.minimum(af_ld, 1 - af_ld)
     df["MAF_ld"] = maf_ld
     df[ColName.SNPID] = df.index
@@ -477,6 +482,7 @@ def locus_qc(
     locus_set: LocusSet,
     r_tol: float = 1e-3,
     method: str = "null-mle",
+    out_dir: Optional[str] = None,
 ):
     """
     Quality control for a locus.
@@ -491,6 +497,8 @@ def locus_qc(
         Tolerance level for eigenvalue check of positive semidefinite matrix of R.
     method : str, default="null-mle"
         Method to estimate s. Options are "null-mle", "null-partialmle", or "null-pseudomle".
+    out_dir : str, optional
+        Output directory.
 
     Returns
     -------
@@ -529,4 +537,68 @@ def locus_qc(
         qc_metrics["cochran_q"] = cochran_q(locus_set)
         qc_metrics["snp_missingness"] = snp_missingness(locus_set)
 
+    if out_dir is not None:
+        os.makedirs(out_dir, exist_ok=True)
+        for k, v in qc_metrics.items():
+            v.to_csv(f"{out_dir}/{k}.txt", sep="\t", index=False)
+
     return qc_metrics
+
+
+def qc_locus_cli(args):
+    """
+    Quality control for a single locus.
+
+    Parameters
+    ----------
+    args : tuple
+        Tuple containing (locus_id, locus_info, base_out_dir).
+    """
+    locus_id, locus_info, base_out_dir = args
+    locus_set = load_locus_set(locus_info)
+    qc_metrics = locus_qc(locus_set)
+    locus_out_dir = f"{base_out_dir}/{locus_id}"
+    os.makedirs(locus_out_dir, exist_ok=True)
+    for k, v in qc_metrics.items():
+        v.to_csv(f"{locus_out_dir}/{k}.txt", sep="\t", index=False)
+    return locus_id
+
+def loci_qc(inputs: str, out_dir: str, threads: int = 1):
+    """
+    Quality control for multiple loci.
+
+    Parameters
+    ----------
+    inputs : str
+        Input file.
+    out_dir : str
+        Output directory.
+    threads : int, default=1
+        Number of threads to use.
+
+    Raises
+    ------
+    ValueError
+        If the number of threads is less than 1.
+    """
+    loci_info = pd.read_csv(inputs, sep="\t")
+
+    # Create progress bar
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+    )
+
+    # Prepare arguments for multiprocessing
+    locus_groups = [(locus_id, locus_info, out_dir) for locus_id, locus_info in loci_info.groupby("locus_id")]
+
+    with progress:
+        task = progress.add_task("[cyan]Processing loci...", total=len(locus_groups))
+
+        # Process loci in parallel with progress updates
+        with Pool(threads) as pool:
+            for _ in pool.imap_unordered(qc_locus_cli, locus_groups):
+                progress.update(task, advance=1)

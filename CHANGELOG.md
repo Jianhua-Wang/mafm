@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.19] (2025-01-20)
+
+### Added
+- qc support for multiprocessing
+
 ## [0.0.18] (2025-01-19)
 
 ### Fixed
