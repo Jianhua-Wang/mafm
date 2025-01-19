@@ -90,6 +90,8 @@ def run_finemap(
         },
         inplace=True,
     )
+    # change maf to 0.00001 if maf is 0
+    finemap_input.loc[finemap_input["maf"] <= 0.00001, "maf"] = 0.00001
     logger.info(f"Writing FINEMAP input to {temp_dir}/finemap.z")
     finemap_input.to_csv(f"{temp_dir}/finemap.z", sep=" ", index=False, float_format="%0.5f")
 
@@ -145,6 +147,7 @@ def run_finemap(
     if os.path.getsize(f"{temp_dir}/finemap.config") == 0:
         logger.warning("FINEMAP output is empty.")
         no_cred = True
+        cs_snps = []
     else:
         finemap_config = pd.read_csv(f"{temp_dir}/finemap.config", sep=" ", usecols=["config", "prob"])
         finemap_config = finemap_config.sort_values("prob", ascending=False)
@@ -163,7 +166,7 @@ def run_finemap(
     logger.warning(
         "FINEMAP outputs configuration file, not credible set. Concatenate the configurations to one credible set."
     )
-    logger.info("N of credible set: 1")
+    logger.info(f"N of credible set: {1 if not no_cred else 0}")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
         tool=Method.FINEMAP,

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.20] (2025-01-20)
+
+### Fixed
+- fix zero maf in finemap
+
 ## [0.0.19] (2025-01-20)
 
 ### Added
