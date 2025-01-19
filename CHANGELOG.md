@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.18] (2025-01-19)
+
+### Fixed
+- fix the bug of no credible set
+
 ## [0.0.17] (2025-01-18)
 
 ### Added

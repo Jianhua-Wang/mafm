@@ -248,6 +248,23 @@ def combine_creds(
     'union' and 'intersection' method will merge all credible sets into one.
     """
     paras = creds[0].parameters
+    tool = creds[0].tool
+    # filter out the creds with no credible set
+    creds = [cred for cred in creds if cred.n_cs > 0]
+    if len(creds) == 0:
+        logger.warning("No credible sets found in the input list.")
+        return CredibleSet(
+            tool=tool,
+            n_cs=0,
+            coverage=0,
+            lead_snps=[],
+            snps=[],
+            cs_sizes=[],
+            pips=pd.Series(),
+            parameters=paras,
+        )
+    if len(creds) == 1:
+        return creds[0]
     if combine_cred == "union":
         merged_snps = []
         for cred in creds:

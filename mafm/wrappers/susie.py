@@ -73,10 +73,15 @@ def run_susie(
         tol=convergence_tol,
     )
     pip = s["pip"]
-    cs_idx = list(s["sets"]["cs"].values())
-    n_cs = len(cs_idx)
-    cs_sizes = [len(idx) for idx in cs_idx]
-    cred_snps = [locus.sumstats[ColName.SNPID].iloc[idx].tolist() for idx in cs_idx]
+    if s["sets"]["cs"]:
+        cs_idx = list(s["sets"]["cs"].values())
+        n_cs = len(cs_idx)
+        cs_sizes = [len(idx) for idx in cs_idx]
+        cred_snps = [locus.sumstats[ColName.SNPID].iloc[idx].tolist() for idx in cs_idx]
+    else:
+        n_cs = 0
+        cs_sizes = []
+        cred_snps = []
     pips = pd.Series(data=pip, index=locus.sumstats[ColName.SNPID].tolist())
     lead_snps = [str(pips[pips.index.isin(cred_snps[i])].idxmax()) for i in range(n_cs)]
     logger.info(f"Fished SuSiE on {locus}")
