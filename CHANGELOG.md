@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.22] (2025-02-01)
+
+### Fixed
+- fix finemap cred bug
+
 ## [0.0.21] (2025-01-20)
 
 ### Fixed

@@ -64,20 +64,25 @@ def run_abf(locus: Locus, max_causal: int = 1, coverage: float = 0.95, var_prior
     )
     df[ColName.PIP] = df["SNP_BF"] / df["SNP_BF"].sum()
     pips = pd.Series(data=df[ColName.PIP].values, index=df[ColName.SNPID].tolist(), name=ColName.ABF)
-    ordering = np.argsort(pips.to_numpy())[::-1]
-    idx = np.where(np.cumsum(pips.to_numpy()[ordering]) > coverage)[0][0]
-    cs_snps = pips.index[ordering][: (idx + 1)].to_list()
-    lead_snps = str(df.loc[df[df[ColName.SNPID].isin(cs_snps)][ColName.P].idxmin(), ColName.SNPID])
+    if len(df[df[ColName.P] <= 1e-5]) > 0:
+        ordering = np.argsort(pips.to_numpy())[::-1]
+        idx = np.where(np.cumsum(pips.to_numpy()[ordering]) > coverage)[0][0]
+        cs_snps = pips.index[ordering][: (idx + 1)].to_list()
+        lead_snps = [str(df.loc[df[df[ColName.SNPID].isin(cs_snps)][ColName.P].idxmin(), ColName.SNPID])]
+    else:
+        logger.warning("There are no SNPs with p-value <= 1e-5, output zero credible set")
+        cs_snps = []
+        lead_snps = []
     logger.info(f"Fished ABF on {locus}")
-    logger.info("N of credible set: 1")
+    logger.info(f"N of credible set: {len(cs_snps)}")
     logger.info(f"Credible set size: {len(cs_snps)}")
     return CredibleSet(
         tool=Method.ABF,
-        n_cs=1,
+        n_cs=1 if len(cs_snps) > 0 else 0,
         coverage=coverage,
-        lead_snps=[lead_snps],
-        snps=[cs_snps],
-        cs_sizes=[len(cs_snps)],
+        lead_snps=[lead_snps],  # type: ignore
+        snps=[cs_snps] if len(cs_snps) > 0 else [],
+        cs_sizes=[len(cs_snps)] if len(cs_snps) > 0 else [],
         pips=pips,
         parameters=parameters,
     )

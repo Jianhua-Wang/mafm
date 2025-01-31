@@ -31,7 +31,7 @@ def run_multisusie(
     prior_tol: float = 1e-9,
     max_iter: int = 100,
     tol: float = 1e-3,
-    min_abs_corr: float = 0,
+    min_abs_corr: float = 0.1,
 ):
     """
     Run MultiSuSiE.

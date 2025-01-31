@@ -19,7 +19,7 @@ def run_susie(
     coverage: float = 0.95,
     max_iter: int = 100,
     estimate_residual_variance: bool = False,
-    min_abs_corr: float = 0.5,
+    min_abs_corr: float = 0.1,
     convergence_tol: float = 1e-3,
 ):
     """

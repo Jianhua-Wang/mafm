@@ -2,14 +2,14 @@
 
 import json
 import logging
-import os
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
 from mafm.constants import ColName, Method
-from mafm.credibleset import CredibleSet, combine_creds
+from mafm.credibleset import CredibleSet
 from mafm.locus import Locus, intersect_sumstat_ld
 from mafm.utils import io_in_tempdir, tool_manager
 
@@ -134,47 +134,55 @@ def run_finemap(
     logger.info(f"Running FINEMAP with command: {' '.join(cmd)}.")
     tool_manager.run_tool("finemap", cmd, f"{temp_dir}/run.log", required_output_files)
 
-    # get PIPs
-    if os.path.getsize(f"{temp_dir}/finemap.snp") == 0:
-        logger.warning("FINEMAP output is empty.")
-        pip = pd.Series(index=finemap_input["rsid"].values.tolist())
-    else:
-        finemap_res = pd.read_csv(f"{temp_dir}/finemap.snp", sep=" ", usecols=["rsid", "prob"])
-        finemap_res = pd.Series(finemap_res["prob"].values, index=finemap_res["rsid"].values)  # type: ignore
-        pip = finemap_res
-
     # get credible set
-    if os.path.getsize(f"{temp_dir}/finemap.config") == 0:
+    cred_file_list = Path(f"{temp_dir}/").glob("finemap.cred*")
+    cred_prob = {}
+    pip = pd.Series(index=finemap_input["rsid"].values.tolist(), data=0.0)
+    n_cs = 0
+    cs_snps = []
+    lead_snps = []
+    cs_sizes = []
+    for cred_file in cred_file_list:
+        with open(cred_file, "r") as f:
+            n_causal = int(cred_file.name[-1])
+            first_line = f.readline()
+            cred_prob[n_causal] = float(first_line.split()[-1])
+    if len(cred_prob) == 0:
         logger.warning("FINEMAP output is empty.")
-        no_cred = True
-        cs_snps = []
     else:
-        finemap_config = pd.read_csv(f"{temp_dir}/finemap.config", sep=" ", usecols=["config", "prob"])
-        finemap_config = finemap_config.sort_values("prob", ascending=False)
-        # TODO: limit the number of causal SNPs when there are too many SNPs with very low PIPs
-        finemap_config = finemap_config[finemap_config["prob"].shift().fillna(0).cumsum() <= coverage]
-        cs_snps = list(set(finemap_config["config"].str.cat(sep=",").split(",")))
-        lead_snps = str(
-            locus.sumstats.loc[
-                locus.sumstats[locus.sumstats[ColName.SNPID].isin(cs_snps)][ColName.P].idxmin(), ColName.SNPID
-            ]
-        )
-        no_cred = False
+        # get the credible set with the highest posterior probability
+        n_cs = max(cred_prob, key=lambda k: float(cred_prob[k]))
+        logger.info(f"FINEMAP found {n_cs} causal SNPs with the post-prob {cred_prob[n_cs]}.")
+        cred_set = pd.read_csv(f"{temp_dir}/finemap.cred{n_cs}", sep=" ", comment="#")
+        for cred_idx in range(1, n_cs + 1):
+            cred_df = cred_set[[f"cred{cred_idx}", f"prob{cred_idx}"]].copy()
+            cred_df.rename(columns={f"cred{cred_idx}": "snp", f"prob{cred_idx}": "pip"}, inplace=True)
+            cred_df.dropna(inplace=True)
+            cs_snps.append(cred_df["snp"].values.tolist())
+            cs_sizes.append(len(cred_df["snp"].values.tolist()))
+            pip[cred_df["snp"].values.tolist()] = cred_df["pip"].values.tolist()
+            lead_snps.append(
+                str(
+                    locus.sumstats.loc[
+                        locus.sumstats[locus.sumstats[ColName.SNPID].isin(cred_df["snp"].values.tolist())][
+                            ColName.P
+                        ].idxmin(),
+                        ColName.SNPID,
+                    ]
+                )
+            )
 
     # output
     logger.info(f"Fished FINEMAP on {locus}")
-    logger.warning(
-        "FINEMAP outputs configuration file, not credible set. Concatenate the configurations to one credible set."
-    )
-    logger.info(f"N of credible set: {1 if not no_cred else 0}")
-    logger.info(f"Credible set size: {len(cs_snps)}")
+    logger.info(f"N of credible set: {n_cs}")
+    logger.info(f"Credible set size: {cs_sizes}")
     return CredibleSet(
         tool=Method.FINEMAP,
-        n_cs=1 if not no_cred else 0,
+        n_cs=n_cs,
         coverage=coverage,
-        lead_snps=[lead_snps] if not no_cred else [],
-        snps=[cs_snps] if not no_cred else [],
-        cs_sizes=[len(cs_snps)] if not no_cred else [],
+        lead_snps=lead_snps,
+        snps=cs_snps,
+        cs_sizes=cs_sizes,
         pips=pip,
         parameters=parameters,
     )
