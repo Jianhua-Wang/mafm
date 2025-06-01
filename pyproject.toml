@@ -29,6 +29,7 @@ matplotlib = ">=3.9.2"
 numba = "^0.60.0"
 tqdm = "^4.66.5"
 rpy2 = "^3.5.16"
+cojopy = "0.1.2"
 
 [tool.poetry.dev-dependencies]
 black = ">=23.9.1"

@@ -305,6 +305,9 @@ def compare_maf(locus: Locus) -> pd.DataFrame:
         A pandas DataFrame containing the results of the comparison.
     """
     input_locus = locus.copy()
+    if "AF2" not in input_locus.ld.map.columns:
+        logger.warning("AF2 is not in the LD matrix.")
+        return pd.DataFrame()
     input_locus = intersect_sumstat_ld(input_locus)
     df = input_locus.sumstats[[ColName.SNPID, ColName.MAF]].copy()
     df.rename(columns={ColName.MAF: "MAF_sumstats"}, inplace=True)
@@ -560,7 +563,7 @@ def qc_locus_cli(args):
     locus_out_dir = f"{base_out_dir}/{locus_id}"
     os.makedirs(locus_out_dir, exist_ok=True)
     for k, v in qc_metrics.items():
-        v.to_csv(f"{locus_out_dir}/{k}.txt", sep="\t", index=False)
+        v.to_csv(f"{locus_out_dir}/{k}.txt.gz", sep="\t", index=False, compression="gzip")
     return locus_id
 
 def loci_qc(inputs: str, out_dir: str, threads: int = 1):

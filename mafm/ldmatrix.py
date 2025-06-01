@@ -1,5 +1,6 @@
 """Functions for reading and converting lower triangle matrices."""
 
+import gzip
 import logging
 
 import numpy as np
@@ -76,8 +77,12 @@ def read_lower_triangle(file_path: str, delimiter: str = "\t") -> np.ndarray:
         If the specified file does not exist.
     """
     try:
-        with open(file_path, "r") as file:
-            rows = [list(map(float, line.strip().split(delimiter))) for line in file if line.strip()]
+        if file_path.endswith(".gz"):
+            with gzip.open(file_path, "rt") as file:
+                rows = [list(map(float, line.strip().split(delimiter))) for line in file if line.strip()]
+        else:
+            with open(file_path, "r") as file:
+                rows = [list(map(float, line.strip().split(delimiter))) for line in file if line.strip()]
     except FileNotFoundError:
         raise FileNotFoundError(f"The file '{file_path}' does not exist.")
 

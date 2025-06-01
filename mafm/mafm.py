@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import toml
 
+from mafm.cojo import conditional_selection
 from mafm.credibleset import CredibleSet, combine_creds
 from mafm.locus import LocusSet, load_locus_set
 from mafm.meta import meta
@@ -193,6 +194,12 @@ def fine_map(
     strategy: str = "single_input",
     tool: str = "susie",
     max_causal: int = 1,
+    set_L_by_cojo: bool = True,
+    p_cutoff: float = 5e-8,
+    collinear_cutoff: float = 0.9,
+    window_size: int = 10000000,
+    maf_cutoff: float = 0.01,
+    diff_freq_cutoff: float = 0.2,
     combine_cred: str = "union",
     combine_pip: str = "max",
     jaccard_threshold: float = 0.1,
@@ -260,19 +267,33 @@ def fine_map(
         if locus_set.n_loci > 1:
             raise ValueError("Locus set must contain only one locus for single-input strategy")
         if tool in ["abf", "carma", "finemap", "rsparsepro", "susie"]:
+            if set_L_by_cojo:
+                max_causal = len(
+                    conditional_selection(
+                        locus_set.loci[0],
+                        p_cutoff=p_cutoff,
+                        collinear_cutoff=collinear_cutoff,
+                        window_size=window_size,
+                        maf_cutoff=maf_cutoff,
+                        diff_freq_cutoff=diff_freq_cutoff,
+                    )
+                )
+                if max_causal == 0:
+                    logger.warning("No significant SNPs found by COJO, using max_causal=1")
+                    max_causal = 1
             return tool_func_dict[tool](locus_set.loci[0], max_causal=max_causal, **params_dict[tool])
         else:
             raise ValueError(f"Tool {tool} not supported for single-input strategy")
     elif strategy == "multi_input":
-        if locus_set.n_loci < 2:
-            raise ValueError("Locus set must contain at least two loci for multi-input strategy")
+        # if locus_set.n_loci < 2:
+        #     raise ValueError("Locus set must contain at least two loci for multi-input strategy")
         if tool in ["multisusie", "susiex"]:
             return tool_func_dict[tool](locus_set, max_causal=max_causal, **params_dict[tool])
         else:
             raise ValueError(f"Tool {tool} not supported for multi-input strategy")
     elif strategy == "post_hoc_combine":
-        if locus_set.n_loci < 2:
-            raise ValueError("Locus set must contain at least two loci for post-hoc combine strategy")
+        # if locus_set.n_loci < 2:
+        #     raise ValueError("Locus set must contain at least two loci for post-hoc combine strategy")
         if tool in ["abf", "carma", "finemap", "rsparsepro", "susie"]:
             all_creds = []
             for locus in locus_set.loci:
