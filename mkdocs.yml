@@ -6,9 +6,14 @@ repo_name: Jianhua-Wang/mafm
 nav:
   - Home: index.md
   - Installation: installation.md
-  - Usage: usage.md
+  - Tutorial:
+    - Overview: tutorial.md
+    - Getting Started: tutorial/getting-started.md
+    - Quick Start: tutorial/quick-start.md
+    - Single-Input Fine-Mapping: tutorial/single-input.md
+    - Multi-Input Fine-Mapping: tutorial/multi-input.md
+    - Advanced Topics: tutorial/advanced.md
   - Modules: api.md
-  - Contributing: contributing.md
   - Changelog: changelog.md
 theme:
   name: material
@@ -22,6 +27,9 @@ theme:
     - navigation.indexes
     - navigation.instant
     - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - toc.follow
 markdown_extensions:
   - admonition
   - pymdownx.details
@@ -29,16 +37,24 @@ markdown_extensions:
   - pymdownx.magiclink
   - pymdownx.snippets:
       check_paths: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
   - admonition
   - toc:
       # baselevel: 2
       permalink: true
       # slugify: !!python/name:pymdownx.slugs.uslugify
   - meta
+  - def_list
 plugins:
   - include-markdown
   - search:
