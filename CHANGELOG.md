@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.26] (2025-06-02)
+
+### Added
+- add web visualization
+
 ## [0.0.25] (2025-06-02)
 
 ### Added

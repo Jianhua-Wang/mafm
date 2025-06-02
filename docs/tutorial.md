@@ -10,7 +10,8 @@ This tutorial is organized into several sections that build upon each other:
 2. **[Quick Start](tutorial/quick-start.md)** - Jump right in with the `mafm pipeline` command
 3. **[Single-Input Fine-Mapping](tutorial/single-input.md)** - Fine-mapping with one cohort or ancestry
 4. **[Multi-Input Fine-Mapping](tutorial/multi-input.md)** - Fine-mapping across multiple cohorts and ancestries
-5. **[Advanced Topics](tutorial/advanced.md)** - Deep dive into parameters and customization
+5. **[Web Visualization](tutorial/web-visualization.md)** - Interactive web interface for exploring results
+6. **[Advanced Topics](tutorial/advanced.md)** - Deep dive into parameters and customization
 
 ## Prerequisites
 
@@ -22,6 +23,12 @@ Before starting this tutorial, make sure you have:
 
 !!! tip "Example Data"
     Throughout this tutorial, we'll use example datasets included with MAFM. You can find them in the `exampledata/` directory after installation.
+
+!!! note "Web Visualization"
+    To use the interactive web interface, you'll need additional dependencies. Install them with:
+    ```bash
+    pip install mafm[web]
+    ```
 
 ## Navigation
 

@@ -6,12 +6,15 @@ repo_name: Jianhua-Wang/mafm
 nav:
   - Home: index.md
   - Installation: installation.md
+  - Usage: usage.md
   - Tutorial:
     - Overview: tutorial.md
     - Getting Started: tutorial/getting-started.md
     - Quick Start: tutorial/quick-start.md
     - Single-Input Fine-Mapping: tutorial/single-input.md
     - Multi-Input Fine-Mapping: tutorial/multi-input.md
+    - Web Visualization: tutorial/web-visualization.md
+    - Web Example: tutorial/web-example.md
     - Advanced Topics: tutorial/advanced.md
   - Modules: api.md
   - Changelog: changelog.md
