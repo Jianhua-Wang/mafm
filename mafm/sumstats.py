@@ -2,7 +2,7 @@
 
 import gzip
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -19,9 +19,6 @@ def get_significant_snps(
 ) -> pd.DataFrame:
     """
     Retrieve significant SNPs from the input DataFrame based on a p-value threshold.
-
-    If no SNPs meet the significance threshold and `use_most_sig_if_no_sig` is True,
-    the function returns the SNP with the smallest p-value.
 
     Parameters
     ----------
@@ -40,9 +37,15 @@ def get_significant_snps(
     Raises
     ------
     ValueError
-        If no significant SNPs are found and `use_most_sig_if_no_sig` is False.
+        If no significant SNPs are found and `use_most_sig_if_no_sig` is False,
+        or if the DataFrame is empty.
     KeyError
         If required columns are not present in the input DataFrame.
+
+    Notes
+    -----
+    If no SNPs meet the significance threshold and `use_most_sig_if_no_sig` is True,
+    the function returns the SNP with the smallest p-value.
 
     Examples
     --------
@@ -53,9 +56,9 @@ def get_significant_snps(
     >>> df = pd.DataFrame(data)
     >>> significant_snps = get_significant_snps(df, pvalue_threshold=5e-8)
     >>> print(significant_snps)
-        SNPID  P
-    0    rs1   1.0e-09
-    1    rs3   1.0e-08
+        SNPID         P
+    0    rs1  1.000000e-09
+    2    rs3  1.000000e-08
     """
     required_columns = {ColName.P, ColName.SNPID}
     missing_columns = required_columns - set(df.columns)
@@ -93,12 +96,6 @@ def make_SNPID_unique(
     """
     Generate unique SNP identifiers to facilitate the combination of multiple summary statistics datasets.
 
-    This function constructs a unique SNPID by concatenating chromosome, base-pair position,
-    and sorted alleles (EA and NEA). This unique identifier allows for efficient merging of
-    multiple summary statistics without the need for extensive duplicate comparisons.
-
-    The unique SNPID format: "chr-bp-sortedEA-sortedNEA"
-
     Parameters
     ----------
     sumstat : pd.DataFrame
@@ -114,7 +111,7 @@ def make_SNPID_unique(
     col_nea : str, optional
         The column name for non-effect allele information, by default ColName.NEA.
     col_p : str, optional
-        The column name for p-value information, by default
+        The column name for p-value information, by default ColName.P.
 
     Returns
     -------
@@ -128,6 +125,17 @@ def make_SNPID_unique(
     ValueError
         If the input DataFrame is empty or becomes empty after processing.
 
+    Notes
+    -----
+    This function constructs a unique SNPID by concatenating chromosome, base-pair position,
+    and sorted alleles (EA and NEA). This unique identifier allows for efficient merging of
+    multiple summary statistics without the need for extensive duplicate comparisons.
+
+    The unique SNPID format: "chr-bp-sortedEA-sortedNEA"
+
+    If duplicates are found and `remove_duplicates` is False, a suffix "-N" is added to make
+    identifiers unique, where N is the occurrence number.
+
     Examples
     --------
     >>> data = {
@@ -139,11 +147,11 @@ def make_SNPID_unique(
     ...     'P': [1e-5, 1e-6, 1e-7]
     ... }
     >>> df = pd.DataFrame(data)
-    >>> unique_df = make_SNPID_unique(df, replace_rsIDcol=True, remove_duplicates=True)
+    >>> unique_df = make_SNPID_unique(df, remove_duplicates=True)
     >>> print(unique_df)
-        SNPID   CHR BP  EA  NEA rsID    P
-    0  1-12345-A-G    1  12345  A   G  rs1  1.0e-05
-    1  2-67890-A-G    2  67890  G   A  rs3  1.0e-07
+        SNPID       CHR     BP EA NEA rsID         P
+    0  1-12345-A-G    1  12345  A   G  rs2  1.000000e-06
+    1  2-67890-A-G    2  67890  G   A  rs3  1.000000e-07
     """
     required_columns = {
         col_chr,
@@ -217,6 +225,11 @@ def check_colnames(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with all required columns, filling missing ones with None.
+
+    Notes
+    -----
+    This function ensures that all required summary statistics columns are present
+    in the DataFrame. Missing columns are added with None values.
     """
     outdf: pd.DataFrame = df.copy()
     for col in ColName.sumstat_cols:
@@ -234,10 +247,19 @@ def check_mandatory_cols(df: pd.DataFrame) -> None:
     df : pd.DataFrame
         The DataFrame to check for mandatory columns.
 
+    Returns
+    -------
+    None
+
     Raises
     ------
     ValueError
         If any mandatory columns are missing.
+
+    Notes
+    -----
+    Mandatory columns are defined in ColName.mandatory_cols and typically include
+    essential fields like chromosome, position, alleles, effect size, and p-value.
     """
     outdf = df.copy()
     missing_cols = set(ColName.mandatory_cols) - set(outdf.columns)
@@ -259,6 +281,12 @@ def rm_col_allna(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         A DataFrame with columns that are entirely NA removed.
+
+    Notes
+    -----
+    This function also converts empty strings to None before checking for
+    all-NA columns. Columns that contain only missing values are dropped
+    to reduce memory usage and improve processing efficiency.
     """
     outdf = df.copy()
     outdf = outdf.replace("", None)
@@ -287,6 +315,22 @@ def munge(df: pd.DataFrame) -> pd.DataFrame:
     ------
     ValueError
         If any mandatory columns are missing.
+
+    Notes
+    -----
+    This function performs comprehensive data cleaning and standardization:
+
+    1. Validates mandatory columns are present
+    2. Removes entirely missing columns
+    3. Cleans chromosome and position data
+    4. Validates and standardizes allele information
+    5. Creates unique SNP identifiers
+    6. Validates p-values, effect sizes, and standard errors
+    7. Processes allele frequencies
+    8. Handles rsID information if present
+
+    The function applies strict quality control and may remove variants
+    that don't meet validation criteria.
     """
     check_mandatory_cols(df)
     outdf = df.copy()
@@ -321,6 +365,11 @@ def munge_rsid(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged rsID column.
+
+    Notes
+    -----
+    This function converts the rsID column to the appropriate data type
+    as defined in ColType.RSID.
     """
     outdf = df.copy()
     outdf[ColName.RSID] = outdf[ColName.RSID].astype(ColType.RSID)
@@ -340,6 +389,18 @@ def munge_chr(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged chromosome column.
+
+    Notes
+    -----
+    This function:
+
+    1. Removes rows with missing chromosome values
+    2. Converts chromosome to string and removes 'chr' prefix
+    3. Converts X chromosome to numeric value (23)
+    4. Validates chromosome values are within acceptable range
+    5. Converts to appropriate data type
+
+    Invalid chromosome values are removed and logged.
     """
     pre_n = df.shape[0]
     outdf = df[df[ColName.CHR].notnull()].copy()
@@ -368,6 +429,17 @@ def munge_bp(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged position column.
+
+    Notes
+    -----
+    This function:
+
+    1. Removes rows with missing position values
+    2. Converts position to numeric type
+    3. Validates positions are within acceptable range
+    4. Converts to appropriate data type
+
+    Invalid position values are removed and logged.
     """
     pre_n = df.shape[0]
     outdf = df[df[ColName.BP].notnull()].copy()
@@ -393,6 +465,17 @@ def munge_allele(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged allele columns.
+
+    Notes
+    -----
+    This function:
+
+    1. Removes rows with missing allele values
+    2. Converts alleles to uppercase
+    3. Validates alleles contain only valid DNA bases (A, C, G, T)
+    4. Removes variants where effect allele equals non-effect allele
+
+    Invalid alleles and monomorphic variants are removed and logged.
     """
     outdf = df.copy()
     for col in [ColName.EA, ColName.NEA]:
@@ -419,6 +502,17 @@ def munge_pvalue(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged p-value column.
+
+    Notes
+    -----
+    This function:
+
+    1. Converts p-values to numeric type
+    2. Removes rows with missing p-values
+    3. Validates p-values are within acceptable range (0, 1)
+    4. Converts to appropriate data type
+
+    Invalid p-values are removed and logged.
     """
     outdf = df.copy()
     pre_n = outdf.shape[0]
@@ -444,6 +538,16 @@ def munge_beta(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged beta column.
+
+    Notes
+    -----
+    This function:
+
+    1. Converts beta values to numeric type
+    2. Removes rows with missing beta values
+    3. Converts to appropriate data type
+
+    Invalid beta values are removed and logged.
     """
     pre_n = df.shape[0]
     outdf = df.copy()
@@ -468,6 +572,17 @@ def munge_se(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged standard error column.
+
+    Notes
+    -----
+    This function:
+
+    1. Converts standard error values to numeric type
+    2. Removes rows with missing standard error values
+    3. Validates standard errors are positive
+    4. Converts to appropriate data type
+
+    Invalid standard error values are removed and logged.
     """
     pre_n = df.shape[0]
     outdf = df.copy()
@@ -493,6 +608,17 @@ def munge_eaf(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged effect allele frequency column.
+
+    Notes
+    -----
+    This function:
+
+    1. Converts EAF values to numeric type
+    2. Removes rows with missing EAF values
+    3. Validates EAF values are within range [0, 1]
+    4. Converts to appropriate data type
+
+    Invalid EAF values are removed and logged.
     """
     pre_n = df.shape[0]
     outdf = df.copy()
@@ -518,6 +644,18 @@ def munge_maf(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with munged minor allele frequency column.
+
+    Notes
+    -----
+    This function:
+
+    1. Converts MAF values to numeric type
+    2. Removes rows with missing MAF values
+    3. Converts frequencies > 0.5 to 1 - frequency (to ensure minor allele)
+    4. Validates MAF values are within acceptable range
+    5. Converts to appropriate data type
+
+    Invalid MAF values are removed and logged.
     """
     pre_n = df.shape[0]
     outdf = df.copy()
@@ -544,6 +682,19 @@ def sort_alleles(df: pd.DataFrame) -> pd.DataFrame:
     -------
     pd.DataFrame
         DataFrame with sorted allele columns.
+
+    Notes
+    -----
+    This function ensures consistent allele ordering by:
+
+    1. Sorting effect allele (EA) and non-effect allele (NEA) alphabetically
+    2. Flipping the sign of beta if alleles were swapped
+    3. Adjusting effect allele frequency (EAF) if alleles were swapped (EAF = 1 - EAF)
+
+    This standardization is important for:
+    - Consistent merging across datasets
+    - Meta-analysis compatibility
+    - LD matrix alignment
     """
     outdf = df.copy()
     outdf[["sorted_a1", "sorted_a2"]] = np.sort(outdf[[ColName.EA, ColName.NEA]], axis=1)
@@ -581,18 +732,18 @@ def load_sumstats(
     filename : str
         The path to the file containing the summary statistics.
         The header must contain the column names: CHR, BP, EA, NEA, EAF, BETA, SE, P.
-    if_sort_alleles : bool, default True
-        Whether to sort alleles in alphabetical order.
-    sep : str, optional
-        The delimiter to use. If None, the delimiter is inferred from the file.
-    nrows : int, optional
-        Number of rows to read. If None, all rows are read.
-    skiprows : int, default 0
-        Number of lines to skip at the start of the file.
-    comment : str, optional
-        Character to split comments in the file.
-    gzipped : bool, optional
-        Whether the file is gzipped. If None, it is inferred from the file extension.
+    if_sort_alleles : bool, optional
+        Whether to sort alleles in alphabetical order, by default True.
+    sep : Optional[str], optional
+        The delimiter to use. If None, the delimiter is inferred from the file, by default None.
+    nrows : Optional[int], optional
+        Number of rows to read. If None, all rows are read, by default None.
+    skiprows : int, optional
+        Number of lines to skip at the start of the file, by default 0.
+    comment : Optional[str], optional
+        Character to split comments in the file, by default None.
+    gzipped : Optional[bool], optional
+        Whether the file is gzipped. If None, it is inferred from the file extension, by default None.
 
     Returns
     -------
@@ -601,7 +752,29 @@ def load_sumstats(
 
     Notes
     -----
-    The function infers the delimiter if not provided and handles gzipped files.
+    The function performs the following operations:
+
+    1. Auto-detects file compression (gzip) from file extension
+    2. Auto-detects delimiter (tab, comma, or space) from file content
+    3. Loads the data using pandas.read_csv
+    4. Applies comprehensive data munging and quality control
+    5. Optionally sorts alleles for consistency
+
+    The function infers the delimiter if not provided and handles gzipped files automatically.
+    Comprehensive quality control is applied including validation of chromosomes, positions,
+    alleles, p-values, effect sizes, and frequencies.
+
+    Examples
+    --------
+    >>> # Load summary statistics with automatic format detection
+    >>> sumstats = load_sumstats('gwas_results.txt.gz')
+    >>> print(f"Loaded {len(sumstats)} variants")
+    Loaded 1000000 variants
+
+    >>> # Load with specific parameters
+    >>> sumstats = load_sumstats('gwas_results.csv', sep=',', nrows=10000)
+    >>> print(sumstats.columns.tolist())
+    ['SNPID', 'CHR', 'BP', 'EA', 'NEA', 'EAF', 'BETA', 'SE', 'P', 'MAF', 'RSID']
     """
     # determine whether the file is gzipped
     if gzipped is None:

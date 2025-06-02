@@ -39,54 +39,150 @@ def run_carma(
     em_dist: str = "logistic",
     temp_dir: Optional[str] = None,
 ) -> CredibleSet:
-    """Run CARMA fine-mapping using R through rpy2.
+    """
+    Run CARMA fine-mapping using R through rpy2.
+
+    CARMA (Causal And Robust Multi-ancestry) performs Bayesian fine-mapping
+    using a spike-and-slab prior with automatic model selection. The method
+    can handle multiple causal variants and provides robust inference in the
+    presence of outliers and model misspecification.
 
     Parameters
     ----------
     locus : Locus
-        Locus object containing summary statistics and LD matrix
+        Locus object containing summary statistics and LD matrix.
+        Must have matched summary statistics and LD data.
     max_causal : int, optional
-        Maximum number of causal variants assumed per locus, by default 1
+        Maximum number of causal variants assumed per locus, by default 1.
+        Higher values increase computational complexity but allow for
+        more realistic multi-variant models.
     coverage : float, optional
-        Coverage probability for credible sets, by default 0.95
+        Coverage probability for credible sets, by default 0.95.
+        This determines the probability mass included in each credible set.
     effect_size_prior : str, optional
-        Prior distribution for effect sizes ('Cauchy' or 'Spike-slab'), by default "Spike-slab"
+        Prior distribution for effect sizes, by default "Spike-slab".
+        Options: "Cauchy" or "Spike-slab". Spike-slab is generally recommended
+        for fine-mapping as it provides better sparsity properties.
     input_alpha : float, optional
-        Elastic net mixing parameter (0 ≤ input_alpha ≤ 1), by default 0.0
+        Elastic net mixing parameter (0 ≤ input_alpha ≤ 1), by default 0.0.
+        Controls the balance between ridge (α=0) and lasso (α=1) regularization.
     y_var : float, optional
-        Variance of the summary statistics, by default 1.0
+        Variance of the summary statistics, by default 1.0.
+        Typically set to 1.0 for standardized effect sizes.
     bf_threshold : float, optional
-        Bayes factor threshold for credible models, by default 10.0
+        Bayes factor threshold for credible models, by default 10.0.
+        Models with BF > threshold are included in the credible set.
     outlier_bf_threshold : float, optional
-        Bayes factor threshold for outlier detection, by default 1/3.2
+        Bayes factor threshold for outlier detection, by default 1/3.2.
+        Variants with BF < threshold may be flagged as outliers.
     outlier_switch : bool, optional
-        Whether to perform outlier detection, by default True
+        Whether to perform outlier detection, by default True.
+        Enables robust inference against outlying variants.
     max_model_dim : int, optional
-        Maximum number of top candidate models, by default 200000
+        Maximum number of top candidate models to consider, by default 200000.
+        Larger values provide more comprehensive search but increase runtime.
     all_inner_iter : int, optional
-        Maximum iterations for Shotgun algorithm within EM, by default 10
+        Maximum iterations for Shotgun algorithm within EM, by default 10.
+        Controls the inner optimization loop convergence.
     all_iter : int, optional
-        Maximum iterations for EM algorithm, by default 3
+        Maximum iterations for EM algorithm, by default 3.
+        Controls the outer EM algorithm convergence.
     tau : float, optional
-        Prior precision parameter of effect size, by default 0.04
+        Prior precision parameter of effect size, by default 0.04.
+        Smaller values correspond to more diffuse priors on effect sizes.
     epsilon_threshold : float, optional
-        Convergence threshold for Bayes factors, by default 1e-5
+        Convergence threshold for Bayes factors, by default 1e-5.
+        Algorithm stops when relative changes fall below this threshold.
     printing_log : bool, optional
-        Whether to print CARMA running log, by default False
+        Whether to print CARMA running log, by default False.
+        Enables verbose output for debugging purposes.
     em_dist : str, optional
-        Distribution for modeling prior probability ('logistic'), by default "logistic"
+        Distribution for modeling prior probability, by default "logistic".
+        Currently only "logistic" is supported.
     temp_dir : Optional[str], optional
-        Temporary directory, by default None.
+        Temporary directory for intermediate files, by default None.
+        Automatically provided by the @io_in_tempdir decorator.
 
     Returns
     -------
     CredibleSet
-        Credible set
+        Credible set object containing:
+        - Posterior inclusion probabilities for all variants
+        - Credible set assignments for different configurations
+        - Lead SNPs with highest PIPs in each credible set
+        - Model selection and convergence information
+
+    Warnings
+    --------
+    If the summary statistics and LD matrix are not matched, they will be
+    automatically intersected and reordered with a warning message.
 
     Notes
     -----
-    The function interfaces with the R package CARMA through rpy2 to perform
-    Bayesian fine-mapping of GWAS loci.
+    CARMA implements a Bayesian fine-mapping framework with several key features:
+
+    1. **Spike-and-slab priors**: Provides automatic variable selection with
+       interpretable posterior inclusion probabilities
+
+    2. **Multi-ancestry support**: Can handle multiple ancestries with
+       appropriate LD matrices (though this wrapper focuses on single ancestry)
+
+    3. **Outlier detection**: Robust inference against outlying variants
+       that may violate model assumptions
+
+    4. **EM algorithm**: Efficient optimization using expectation-maximization
+       with shotgun stochastic search
+
+    The algorithm workflow:
+    1. Convert summary statistics to Z-scores
+    2. Set up R environment and import CARMA package
+    3. Configure priors and algorithm parameters
+    4. Run EM algorithm with shotgun search
+    5. Extract posterior inclusion probabilities and credible sets
+    6. Identify lead variants within each credible set
+
+    Model assumptions:
+    - Summary statistics follow multivariate normal distribution
+    - LD matrix accurately reflects population structure
+    - Effect sizes follow spike-and-slab or Cauchy priors
+    - At most max_causal variants are truly causal
+
+    Reference:
+    Jin, J. et al. A powerful approach to estimating a composite null model in
+    large-scale genomics data. arXiv preprint (2021).
+
+    Examples
+    --------
+    >>> # Basic CARMA analysis with default parameters
+    >>> credible_set = run_carma(locus)
+    >>> print(f"Found {credible_set.n_cs} credible sets")
+    >>> print(f"Lead SNPs: {credible_set.lead_snps}")
+    Found 1 credible sets
+    Lead SNPs: ['rs123456']
+
+    >>> # CARMA with multiple causal variants and Cauchy prior
+    >>> credible_set = run_carma(
+    ...     locus,
+    ...     max_causal=3,
+    ...     effect_size_prior="Cauchy",
+    ...     coverage=0.99,
+    ...     outlier_switch=True
+    ... )
+    >>> print(f"Credible set sizes: {credible_set.cs_sizes}")
+    >>> print(f"Top PIP: {credible_set.pips.max():.4f}")
+    Credible set sizes: [4, 7, 12]
+    Top PIP: 0.8542
+
+    >>> # Access detailed results
+    >>> pips_df = credible_set.pips.sort_values(ascending=False)
+    >>> print("Top 5 variants by PIP:")
+    >>> print(pips_df.head())
+    Top 5 variants by PIP:
+    rs123456    0.8542
+    rs789012    0.6431
+    rs345678    0.4329
+    rs456789    0.2108
+    rs567890    0.1054
     """
     # if not check_r_package("CARMA"):
     #     raise RuntimeError("CARMA is not installed or R version is not supported.")

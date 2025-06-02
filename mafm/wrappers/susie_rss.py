@@ -1,4 +1,10 @@
-"""Wrapper functions for SuSiE model fitting and post-processing."""
+"""
+SuSiE (Sum of Single Effects) model implementation for fine-mapping.
+
+This module provides comprehensive functionality for fitting the SuSiE model
+to summary statistics and full data, including credible set construction,
+posterior inference, and model diagnostics.
+"""
 
 import logging
 import math
@@ -24,41 +30,126 @@ def susie_get_cs(
     n_purity: int = 100,
 ) -> Dict[str, Any]:
     """
-    Get credible sets (CS) from SuSiE results.
+    Extract credible sets from SuSiE results with quality assessment.
 
-    This function processes the results from a SuSiE analysis to identify
-    credible sets, optionally filtering them based on correlation purity.
+    This function processes the posterior inclusion probabilities from a SuSiE
+    analysis to construct credible sets with specified coverage probability.
+    It optionally filters credible sets based on correlation structure to
+    ensure high-quality fine-mapping results.
 
     Parameters
     ----------
-    res : dict
-        A dictionary containing SuSiE results, must include 'alpha' key.
+    res : Dict[str, np.ndarray]
+        Dictionary containing SuSiE results. Must include:
+        - 'alpha': L×P matrix of posterior inclusion probabilities
+        - 'V': (optional) L-vector of prior variances for filtering
+        - 'null_index': (optional) index of null component
     X : np.ndarray, optional
-        n by p matrix of values of the p variables (covariates) in n samples.
+        n×p matrix of standardized genotype values.
+        Either X or Xcorr must be provided for purity calculation.
     Xcorr : np.ndarray, optional
-        p by p matrix of correlations between variables (covariates).
-    coverage : float, default 0.95
-        A number between 0 and 1 specifying desired coverage of each CS.
-    min_abs_corr : float, default 0.5
-        A "purity" threshold for the CS.
-    dedup : bool, default True
-        If True, remove duplicate CSs.
-    squared : bool, default False
-        If True, report min, mean and median of squared correlation.
-    check_symmetric : bool, default True
-        If True, check for symmetry of matrix Xcorr when provided.
-    n_purity : int, default 100
-        The maximum number of CS variables used in calculating correlation statistics.
+        p×p correlation matrix between variables.
+        Either X or Xcorr must be provided for purity calculation.
+    coverage : float, optional
+        Target coverage probability for credible sets, by default 0.95.
+        Each credible set will contain variants with cumulative PIP ≥ coverage.
+    min_abs_corr : float, optional
+        Minimum absolute correlation threshold for credible set purity, by default 0.5.
+        Credible sets with maximum pairwise correlation below this threshold
+        are filtered out as potentially unreliable.
+    dedup : bool, optional
+        Whether to remove duplicate credible sets, by default True.
+        Duplicate sets can arise when multiple components identify the same signal.
+    squared : bool, optional
+        Whether to use squared correlations for purity assessment, by default False.
+        If True, min_abs_corr is interpreted as minimum squared correlation.
+    check_symmetric : bool, optional
+        Whether to verify and enforce symmetry of Xcorr matrix, by default True.
+        Non-symmetric correlation matrices are symmetrized by averaging.
+    n_purity : int, optional
+        Maximum number of variants per credible set for purity calculation, by default 100.
+        Large credible sets are randomly subsampled for computational efficiency.
 
     Returns
     -------
-    dict
-        A dictionary containing credible sets and related statistics.
+    Dict[str, Any]
+        Dictionary containing credible set results:
+        - 'cs': Dict mapping credible set names to variant indices
+        - 'coverage': Array of actual coverage for each credible set
+        - 'purity': Dict with correlation statistics (min, mean, median)
+        - 'cs_index': Indices of SuSiE components corresponding to credible sets
+        - 'requested_coverage': The input coverage parameter
+
+        Returns None values if no credible sets pass quality filters.
 
     Raises
     ------
     ValueError
-        If both X and Xcorr are provided or if neither is provided when needed.
+        If both X and Xcorr are provided (only one should be specified).
+
+    Notes
+    -----
+    Credible set construction follows these steps:
+
+    1. **Component filtering**: Remove components with very small prior variance
+       (if 'V' is available) and null components
+
+    2. **Coverage-based inclusion**: For each component, include variants in
+       order of decreasing PIP until cumulative probability ≥ coverage
+
+    3. **Deduplication**: Remove identical credible sets that may arise from
+       multiple components capturing the same signal
+
+    4. **Purity assessment**: Calculate correlation statistics within each
+       credible set using provided genotype data or correlation matrix
+
+    5. **Quality filtering**: Retain only credible sets meeting the minimum
+       correlation threshold
+
+    Purity metrics provide insight into credible set quality:
+    - **min_abs_corr**: Minimum pairwise correlation (key quality metric)
+    - **mean_abs_corr**: Average pairwise correlation
+    - **median_abs_corr**: Median pairwise correlation
+
+    High-quality credible sets should have:
+    - min_abs_corr ≥ 0.5 (variants in strong LD)
+    - Compact size (< 100 variants typically)
+    - High coverage (> 0.95 for reliable inference)
+
+    Examples
+    --------
+    >>> # Basic credible set extraction
+    >>> cs_results = susie_get_cs(susie_fit)
+    >>> print(f"Found {len(cs_results['cs'])} credible sets")
+    >>> for name, variants in cs_results['cs'].items():
+    ...     print(f"{name}: {len(variants)} variants")
+    Found 2 credible sets
+    L0: 12 variants
+    L1: 8 variants
+
+    >>> # High-stringency credible sets with strict purity requirements
+    >>> cs_results = susie_get_cs(
+    ...     susie_fit,
+    ...     Xcorr=ld_matrix,
+    ...     coverage=0.99,
+    ...     min_abs_corr=0.8
+    ... )
+    >>> if cs_results['cs'] is not None:
+    ...     purity = cs_results['purity']
+    ...     print(f"Min correlations: {purity['min_abs_corr']}")
+    ...     print(f"Mean correlations: {purity['mean_abs_corr']}")
+    Min correlations: [0.85, 0.92]
+    Mean correlations: [0.91, 0.95]
+
+    >>> # Access specific credible set details
+    >>> for cs_name, variants in cs_results['cs'].items():
+    ...     idx = int(cs_name[1:])  # Extract component index
+    ...     coverage = cs_results['coverage'][idx]
+    ...     purity = cs_results['purity']['min_abs_corr'][idx]
+    ...     print(f"Set {cs_name}: {len(variants)} variants, "
+    ...           f"coverage={coverage:.3f}, purity={purity:.3f}")
+    Set L0: 12 variants, coverage=0.982, purity=0.851
+    Set L1: 8 variants, coverage=0.991, purity=0.923
     """
     if X is not None and Xcorr is not None:
         raise ValueError("Only one of X or Xcorr should be specified")
@@ -155,19 +246,46 @@ def susie_get_cs(
 
 def in_CS_x(x: np.ndarray, coverage: float = 0.9) -> np.ndarray:
     """
-    Return binary vector indicating if each point is in CS.
+    Determine credible set membership for a single component.
+
+    Creates a binary indicator vector specifying which variants should be
+    included in the credible set for a single SuSiE component, based on
+    the specified coverage probability.
 
     Parameters
     ----------
     x : np.ndarray
-        A probability vector.
-    coverage : float, default 0.9
-        The desired coverage.
+        Vector of posterior inclusion probabilities (PIPs) for all variants.
+        Should sum to approximately 1 for a well-calibrated component.
+    coverage : float, optional
+        Target coverage probability, by default 0.9.
+        Variants are included until cumulative PIP reaches this threshold.
 
     Returns
     -------
     np.ndarray
-        Binary vector indicating CS membership.
+        Binary vector of same length as x, where 1 indicates inclusion
+        in the credible set and 0 indicates exclusion.
+
+    Notes
+    -----
+    The algorithm:
+    1. Ranks variants by decreasing posterior inclusion probability
+    2. Includes top variants until cumulative probability ≥ coverage
+    3. Returns binary vector indicating membership
+
+    For well-calibrated components, the credible set should contain
+    the true causal variant with probability ≥ coverage.
+
+    Examples
+    --------
+    >>> # Simple example with 5 variants
+    >>> pips = np.array([0.1, 0.6, 0.2, 0.05, 0.05])
+    >>> cs_membership = in_CS_x(pips, coverage=0.8)
+    >>> print(f"Credible set: variants {np.where(cs_membership)[0]}")
+    >>> print(f"Coverage: {pips[cs_membership].sum():.2f}")
+    Credible set: variants [1 2]
+    Coverage: 0.80
     """
     n = n_in_CS_x(x, coverage)
     o = np.argsort(x)[::-1]
@@ -178,19 +296,55 @@ def in_CS_x(x: np.ndarray, coverage: float = 0.9) -> np.ndarray:
 
 def in_CS(res: Union[Dict[str, np.ndarray], np.ndarray], coverage: float = 0.9) -> np.ndarray:
     """
-    Return an l-by-p binary matrix indicating which variables are in susie credible sets.
+    Determine credible set membership across all SuSiE components.
+
+    Constructs credible sets for each component in a SuSiE model by applying
+    the coverage criterion to the posterior inclusion probabilities.
 
     Parameters
     ----------
     res : Union[Dict[str, np.ndarray], np.ndarray]
-        SuSiE results or alpha matrix.
-    coverage : float, default 0.9
-        The desired coverage.
+        Either a SuSiE results dictionary containing 'alpha' key,
+        or directly the L×P alpha matrix of posterior inclusion probabilities.
+    coverage : float, optional
+        Target coverage probability for each credible set, by default 0.9.
 
     Returns
     -------
     np.ndarray
-        Binary matrix indicating CS membership.
+        L×P binary matrix where entry (i,j) = 1 if variant j is included
+        in the credible set for component i, and 0 otherwise.
+
+    Notes
+    -----
+    This function applies in_CS_x to each row of the alpha matrix,
+    creating credible sets for all L components simultaneously.
+
+    The resulting matrix can be used to:
+    - Identify which variants belong to each credible set
+    - Calculate actual coverage achieved by each set
+    - Check for overlaps between credible sets from different components
+
+    Examples
+    --------
+    >>> # Extract credible sets from SuSiE results
+    >>> cs_matrix = in_CS(susie_results, coverage=0.95)
+    >>> print(f"Shape: {cs_matrix.shape}")  # L x P
+    >>> print(f"Component 0 credible set size: {cs_matrix[0].sum()}")
+    Shape: (5, 1000)
+    Component 0 credible set size: 12
+
+    >>> # Find variants in any credible set
+    >>> any_cs = cs_matrix.any(axis=0)
+    >>> print(f"Total variants in any credible set: {any_cs.sum()}")
+    Total variants in any credible set: 45
+
+    >>> # Check for overlapping credible sets
+    >>> for i in range(cs_matrix.shape[0]):
+    ...     for j in range(i+1, cs_matrix.shape[0]):
+    ...         overlap = (cs_matrix[i] & cs_matrix[j]).sum()
+    ...         if overlap > 0:
+    ...             print(f"Components {i} and {j} overlap: {overlap} variants")
     """
     if isinstance(res, dict):
         res = res["alpha"]

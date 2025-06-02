@@ -26,28 +26,114 @@ def run_finemap(
     temp_dir: Optional[str] = None,
 ) -> CredibleSet:
     """
-    Run FINEMAP with shotgun stochastic search.
+    Run FINEMAP with shotgun stochastic search for fine-mapping analysis.
+
+    FINEMAP uses a shotgun stochastic search algorithm to efficiently explore
+    the space of possible causal configurations and identify credible sets
+    of variants that jointly explain the observed association signal.
 
     Parameters
     ----------
     locus : Locus
-        Locus object.
+        Locus object containing summary statistics and LD matrix data.
+        Must include MAF (minor allele frequency) information.
     max_causal : int, optional
-        Maximum number of causal variants, by default 1, only support 1.
+        Maximum number of causal variants to consider, by default 1.
+        Higher values allow for more complex causal models but increase
+        computational time exponentially.
     coverage : float, optional
-        Coverage of the credible set, by default 0.95.
+        Coverage probability of the credible set, by default 0.95.
+        This determines the cumulative posterior probability mass
+        included in the credible set.
     n_iter : int, optional
-        Number of iterations, by default 100000.
+        Number of iterations for the stochastic search, by default 100000.
+        More iterations generally improve accuracy but increase runtime.
     n_threads : int, optional
-        Number of threads, by default 1.
+        Number of threads to use for parallel computation, by default 1.
+        Multiple threads can significantly speed up analysis for large datasets.
     temp_dir : Optional[str], optional
-        Temporary directory, by default None.
+        Temporary directory for intermediate files, by default None.
+        Automatically provided by the @io_in_tempdir decorator.
 
     Returns
     -------
     CredibleSet
-        Credible set.
+        Credible set object containing:
+        - Number of causal variants identified
+        - Posterior inclusion probabilities for all variants
+        - Credible set membership for each causal configuration
+        - Lead SNPs (most significant in each credible set)
+        - Coverage probability and method parameters
 
+    Raises
+    ------
+    ValueError
+        If MAF column is not present in the locus summary statistics.
+
+    Warnings
+    --------
+    If the summary statistics and LD matrix are not matched (different variant orders),
+    they will be automatically intersected and reordered.
+
+    Notes
+    -----
+    FINEMAP implements a shotgun stochastic search algorithm that:
+    
+    1. Samples causal configurations from the posterior distribution
+    2. Uses Bayes factors to evaluate each configuration
+    3. Accounts for linkage disequilibrium through the LD matrix
+    4. Provides posterior probabilities for different numbers of causal variants
+    5. Constructs credible sets based on posterior inclusion probabilities
+    
+    The algorithm can handle multiple causal variants and provides:
+    - Posterior probabilities for 0, 1, 2, ... max_causal variants
+    - Configuration-specific credible sets
+    - Model selection based on posterior probabilities
+    
+    Input file requirements:
+    - Summary statistics with SNPID, CHR, BP, EA, NEA, MAF, BETA, SE
+    - LD matrix in lower-triangular format
+    - Master file linking all input components
+    
+    Output interpretation:
+    - Higher posterior inclusion probabilities indicate stronger evidence for causality
+    - Multiple credible sets may be identified for different causal models
+    - The optimal number of causal variants is selected based on posterior probabilities
+    
+    Reference:
+    Benner, C. et al. FINEMAP: efficient variable selection using summary data from 
+    genome-wide association studies. Bioinformatics 32, 1493-1501 (2016).
+
+    Examples
+    --------
+    >>> # Basic FINEMAP analysis
+    >>> credible_set = run_finemap(locus)
+    >>> print(f"Found {credible_set.n_cs} causal variants")
+    >>> print(f"Credible set sizes: {credible_set.cs_sizes}")
+    Found 2 causal variants
+    Credible set sizes: [5, 8]
+    
+    >>> # FINEMAP with multiple causal variants and high coverage
+    >>> credible_set = run_finemap(
+    ...     locus, 
+    ...     max_causal=3, 
+    ...     coverage=0.99, 
+    ...     n_iter=500000
+    ... )
+    >>> print(f"Coverage: {credible_set.coverage}")
+    >>> print(f"Lead SNPs: {credible_set.lead_snps}")
+    Coverage: 0.99
+    Lead SNPs: ['rs123456', 'rs789012', 'rs345678']
+    
+    >>> # Access posterior inclusion probabilities
+    >>> top_pips = credible_set.pips.nlargest(10)
+    >>> print("Top 10 variants by PIP:")
+    >>> print(top_pips)
+    Top 10 variants by PIP:
+    rs123456    0.85
+    rs789012    0.72
+    rs345678    0.68
+    ...
     """
     logger.info(f"Running FINEMAP on {locus}")
     parameters = {
@@ -173,7 +259,7 @@ def run_finemap(
             )
 
     # output
-    logger.info(f"Fished FINEMAP on {locus}")
+    logger.info(f"Finished FINEMAP on {locus}")
     logger.info(f"N of credible set: {n_cs}")
     logger.info(f"Credible set size: {cs_sizes}")
     return CredibleSet(

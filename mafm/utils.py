@@ -8,13 +8,13 @@ import subprocess
 import tempfile
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 logger = logging.getLogger("Utils")
 
 
 # Type variable for decorator
-F = TypeVar("F", bound=Callable[..., any])  # type: ignore
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
@@ -57,7 +57,7 @@ def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
 
     def decorator(func: F) -> F:
         @wraps(func)
-        def wrapper(*args, **kwargs) -> any:  # type: ignore
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             if not os.path.exists(dir):
                 os.makedirs(dir, exist_ok=True)
             temp_dir = tempfile.mkdtemp(dir=dir)
@@ -86,7 +86,7 @@ def io_in_tempdir(dir: str = "./tmp") -> Callable[[F], F]:
     return decorator
 
 
-def check_r_package(package_name: str) -> Optional[None]:
+def check_r_package(package_name: str) -> None:
     """
     Check if R version is 4.0 or later and if a specified R package is installed.
 
@@ -115,7 +115,7 @@ def check_r_package(package_name: str) -> Optional[None]:
     Examples
     --------
     >>> check_r_package("ggplot2")
-    None
+    >>> # No output if successful
     >>> check_r_package("nonexistentpackage")
     RuntimeError: R package 'nonexistentpackage' is not installed.
     """
@@ -148,7 +148,6 @@ def check_r_package(package_name: str) -> Optional[None]:
         )
         if result.returncode != 0:
             raise RuntimeError(f"R package '{package_name}' is not installed.")
-        return None
     except subprocess.CalledProcessError:
         raise RuntimeError(f"R package '{package_name}' is not installed.")
 
@@ -156,6 +155,16 @@ def check_r_package(package_name: str) -> Optional[None]:
 class ExternalTool:
     """
     A class to manage and run external tools.
+
+    This class provides a unified interface for managing external bioinformatics tools,
+    handling path resolution, and executing commands with proper error checking.
+
+    Parameters
+    ----------
+    name : str
+        The name of the external tool.
+    default_path : Optional[str], optional
+        The default path to the tool if not found in the system PATH, by default None.
 
     Attributes
     ----------
@@ -172,11 +181,17 @@ class ExternalTool:
         Sets a custom path for the tool if it exists.
     get_path() -> str
         Retrieves the path to the tool, checking custom, system, and default paths.
-    run(args: List[str]) -> subprocess.CompletedProcess
+    run(command: List[str], log_file: str, output_file_path: Optional[Union[str, List[str]]]) -> None
         Runs the tool with the given arguments.
+
+    Examples
+    --------
+    >>> tool = ExternalTool("samtools", "/usr/local/bin/samtools")
+    >>> tool.set_custom_path("/opt/samtools/bin/samtools")
+    >>> tool.run(["view", "-h", "input.bam"], "samtools.log", "output.sam")
     """
 
-    def __init__(self, name: str, default_path: Optional[str] = None):
+    def __init__(self, name: str, default_path: Optional[str] = None) -> None:
         """
         Initialize the ExternalTool with a name and an optional default path.
 
@@ -185,7 +200,7 @@ class ExternalTool:
         name : str
             The name of the external tool.
         default_path : Optional[str], optional
-            The default path to the tool if not found in the system PATH (default is None).
+            The default path to the tool if not found in the system PATH, by default None.
         """
         self.name = name
         self.default_path = default_path
@@ -213,6 +228,11 @@ class ExternalTool:
     def get_path(self) -> str:
         """
         Retrieve the path to the tool, checking custom, system, and default paths.
+
+        The function checks paths in the following order:
+        1. Custom path (if set via set_custom_path)
+        2. System PATH (using shutil.which)
+        3. Default path (relative to package directory)
 
         Returns
         -------
@@ -250,12 +270,12 @@ class ExternalTool:
         Parameters
         ----------
         command : List[str]
-            The command line instruction to be executed.
+            The command line instruction to be executed (without the tool name).
         log_file : str
             The file to log the output.
         output_file_path : Optional[Union[str, List[str]]], optional
-            The expected output file path. If provided, the function will check
-            if this file exists after command execution.
+            The expected output file path(s). If provided, the function will check
+            if these files exist after command execution, by default None.
 
         Raises
         ------
@@ -266,14 +286,16 @@ class ExternalTool:
 
         Examples
         --------
-        >>> tool_manager.get_tool("finemap").run(["--help"], "finemap.log")
+        >>> tool = ExternalTool("finemap")
+        >>> tool.run(["--help"], "finemap.log")
+        >>> tool.run(["--in-files", "data.master"], "finemap.log", "output.snp")
         """
-        command = [self.get_path()] + command
+        full_command = [self.get_path()] + command
         try:
             # Run the command and capture output
-            logger.debug(f"Run command: {' '.join(command)}")
+            logger.debug(f"Run command: {' '.join(full_command)}")
             with open(log_file, "w") as log:
-                subprocess.run(command, shell=False, check=True, stdout=log, stderr=log)
+                subprocess.run(full_command, shell=False, check=True, stdout=log, stderr=log)
 
             # Check for output file if path is provided
             if output_file_path:
@@ -292,6 +314,9 @@ class ToolManager:
     """
     A class to manage multiple external tools.
 
+    This class provides a centralized registry for managing multiple external tools,
+    allowing for easy registration, configuration, and execution of bioinformatics software.
+
     Attributes
     ----------
     tools : Dict[str, ExternalTool]
@@ -305,8 +330,15 @@ class ToolManager:
         Sets a custom path for a registered tool.
     get_tool(name: str) -> ExternalTool
         Retrieves a registered tool by its name.
-    run_tool(name: str, args: List[str]) -> subprocess.CompletedProcess
+    run_tool(name: str, args: List[str], log_file: str, output_file_path: Optional[Union[str, List[str]]]) -> None
         Runs a registered tool with the given arguments.
+
+    Examples
+    --------
+    >>> manager = ToolManager()
+    >>> manager.register_tool("finemap", "bin/finemap")
+    >>> manager.set_tool_path("finemap", "/usr/local/bin/finemap")
+    >>> manager.run_tool("finemap", ["--help"], "finemap.log")
     """
 
     def __init__(self) -> None:
@@ -322,7 +354,7 @@ class ToolManager:
         name : str
             The name of the tool to register.
         default_path : Optional[str], optional
-            The default path to the tool if not found in the system PATH (default is None).
+            The default path to the tool if not found in the system PATH, by default None.
         """
         self.tools[name] = ExternalTool(name, default_path)
 
@@ -384,13 +416,8 @@ class ToolManager:
         log_file : str
             The file to log the output.
         output_file_path : Optional[Union[str, List[str]]], optional
-            The expected output file path. If provided, the function will check
-            if this file exists after command execution.
-
-        Returns
-        -------
-        subprocess.CompletedProcess
-            The result of the subprocess run.
+            The expected output file path(s). If provided, the function will check
+            if these files exist after command execution, by default None.
 
         Raises
         ------
@@ -398,6 +425,8 @@ class ToolManager:
             If the tool is not registered.
         subprocess.CalledProcessError
             If the subprocess call fails.
+        FileNotFoundError
+            If expected output files are not found after execution.
         """
         if name not in self.tools:
             raise KeyError(f"Tool {name} is not registered")

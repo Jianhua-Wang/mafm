@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from itertools import combinations
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,25 @@ logger = logging.getLogger("MAFM")
 class CredibleSet:
     """
     Class representing credible sets from one fine-mapping tool.
+
+    Parameters
+    ----------
+    tool : str
+        The name of the fine-mapping tool.
+    parameters : Dict[str, Any]
+        Additional parameters used by the fine-mapping tool.
+    coverage : float
+        The coverage of the credible sets.
+    n_cs : int
+        The number of credible sets.
+    cs_sizes : List[int]
+        Sizes of each credible set.
+    lead_snps : List[str]
+        List of lead SNPs.
+    snps : List[List[str]]
+        List of SNPs for each credible set.
+    pips : pd.Series
+        Posterior inclusion probabilities.
 
     Attributes
     ----------
@@ -33,21 +52,43 @@ class CredibleSet:
         Sizes of each credible set.
     pips : pd.Series
         Posterior inclusion probabilities.
-    parameters : Dict
+    parameters : Dict[str, Any]
         Additional parameters used by the fine-mapping tool.
     """
 
     def __init__(
         self,
         tool: str,
-        parameters: Dict,
+        parameters: Dict[str, Any],
         coverage: float,
         n_cs: int,
         cs_sizes: List[int],
         lead_snps: List[str],
         snps: List[List[str]],
         pips: pd.Series,
-    ):
+    ) -> None:
+        """
+        Initialize CredibleSet object.
+
+        Parameters
+        ----------
+        tool : str
+            The name of the fine-mapping tool.
+        parameters : Dict[str, Any]
+            Additional parameters used by the fine-mapping tool.
+        coverage : float
+            The coverage of the credible sets.
+        n_cs : int
+            The number of credible sets.
+        cs_sizes : List[int]
+            Sizes of each credible set.
+        lead_snps : List[str]
+            List of lead SNPs.
+        snps : List[List[str]]
+            List of SNPs for each credible set.
+        pips : pd.Series
+            Posterior inclusion probabilities.
+        """
         self._tool = tool
         self._parameters = parameters
         self._coverage = coverage
@@ -64,7 +105,7 @@ class CredibleSet:
         return self._tool
 
     @property
-    def parameters(self) -> Dict:
+    def parameters(self) -> Dict[str, Any]:
         """Get the parameters."""
         return self._parameters
 
@@ -99,13 +140,29 @@ class CredibleSet:
         """Get the PIPs."""
         return self._pips
 
-    def __repr__(self):
-        """Return a string representation of the CredibleSet object."""
-        return f"CredibleSet(\n  tool={self.tool}, coverage={self.coverage}, n_cs={self.n_cs}, cs_sizes={self.cs_sizes}, lead_snps={self.lead_snps}," + \
-            f"\n  Parameters: {json.dumps(self.parameters)}\n)"
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the CredibleSet object.
+
+        Returns
+        -------
+        str
+            String representation of the CredibleSet object.
+        """
+        return (
+            f"CredibleSet(\n  tool={self.tool}, coverage={self.coverage}, n_cs={self.n_cs}, cs_sizes={self.cs_sizes}, lead_snps={self.lead_snps},"
+            + f"\n  Parameters: {json.dumps(self.parameters)}\n)"
+        )
 
     def copy(self) -> "CredibleSet":
-        """Copy the CredibleSet object."""
+        """
+        Copy the CredibleSet object.
+
+        Returns
+        -------
+        CredibleSet
+            A copy of the CredibleSet object.
+        """
         return CredibleSet(
             tool=self.tool,
             parameters=self.parameters,
@@ -117,12 +174,13 @@ class CredibleSet:
             pips=self.pips,
         )
 
-    def to_dict(self) -> Dict:
-        """Convert to dictionary for TOML storage (excluding pips).
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert to dictionary for TOML storage (excluding pips).
 
         Returns
         -------
-        Dict
+        Dict[str, Any]
             A dictionary representation of the CredibleSet excluding pips.
         """
         return {
@@ -136,12 +194,13 @@ class CredibleSet:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict, pips: pd.Series) -> "CredibleSet":
-        """Create CredibleSet from dictionary and pips.
+    def from_dict(cls, data: Dict[str, Any], pips: pd.Series) -> "CredibleSet":
+        """
+        Create CredibleSet from dictionary and pips.
 
         Parameters
         ----------
-        data : Dict
+        data : Dict[str, Any]
             A dictionary containing the data to initialize the CredibleSet.
         pips : pd.Series
             Posterior inclusion probabilities.
@@ -174,15 +233,16 @@ def combine_pips(pips: List[pd.Series], method: str = "max") -> pd.Series:
     method : str, optional
         Method to combine PIPs, by default "max".
         Options: "max", "min", "mean", "meta".
-        when "meta" is selected, the method will use the formula:
+        When "meta" is selected, the method will use the formula:
         PIP_meta = 1 - prod(1 - PIP_i), where i is the index of tools,
         PIP_i = 0 when the SNP is not in the credible set of the tool.
-        when "max", "min", "mean" is selected, the SNP not in the credible set
+        When "max", "min", "mean" is selected, the SNP not in the credible set
         will be excluded from the calculation.
 
     Returns
     -------
     pd.Series
+        Combined PIPs.
 
     Raises
     ------
@@ -218,25 +278,28 @@ def combine_creds(
     combine_cred : str, optional
         Method to combine credible sets, by default "union".
         Options: "union", "intersection", "cluster".
-        "union":        Union of all credible sets to form a merged credible set.
-        "intersection": Frist merge the credible sets from the same tool,
-                        then take the intersection of all merged credible sets.
-                        no credible set will be returned if no common SNPs found.
-        "cluster":      Merge credible sets with Jaccard index > 0.1.
+
+        - "union": Union of all credible sets to form a merged credible set.
+        - "intersection": First merge the credible sets from the same tool,
+            then take the intersection of all merged credible sets.
+            No credible set will be returned if no common SNPs found.
+        - "cluster": Merge credible sets with Jaccard index > jaccard_threshold.
     combine_pip : str, optional
         Method to combine PIPs, by default "max".
         Options: "max", "min", "mean", "meta".
-        "meta": PIP_meta = 1 - prod(1 - PIP_i), where i is the index of tools,
-                PIP_i = 0 when the SNP is not in the credible set of the tool.
-        "max":  Maximum PIP value for each SNP across all tools.
-        "min":  Minimum PIP value for each SNP across all tools.
-        "mean": Mean PIP value for each SNP across all tools.
+
+        - "meta": PIP_meta = 1 - prod(1 - PIP_i), where i is the index of tools,
+            PIP_i = 0 when the SNP is not in the credible set of the tool.
+        - "max": Maximum PIP value for each SNP across all tools.
+        - "min": Minimum PIP value for each SNP across all tools.
+        - "mean": Mean PIP value for each SNP across all tools.
     jaccard_threshold : float, optional
         Jaccard index threshold for the "cluster" method, by default 0.1.
 
     Returns
     -------
     CredibleSet
+        Combined credible set.
 
     Raises
     ------
@@ -245,7 +308,7 @@ def combine_creds(
 
     Notes
     -----
-    'union' and 'intersection' method will merge all credible sets into one.
+    'union' and 'intersection' methods will merge all credible sets into one.
     """
     paras = creds[0].parameters
     tool = creds[0].tool
@@ -315,14 +378,19 @@ def continuous_jaccard(dict1: Dict[str, float], dict2: Dict[str, float]) -> floa
     Parameters
     ----------
     dict1 : Dict[str, float]
-        First dictionary with keys and PIP values (0-1)
+        First dictionary with keys and PIP values (0-1).
     dict2 : Dict[str, float]
-        Second dictionary with keys and PIP values (0-1)
+        Second dictionary with keys and PIP values (0-1).
 
     Returns
     -------
     float
-        Modified Jaccard similarity index between 0 and 1
+        Modified Jaccard similarity index between 0 and 1.
+
+    Raises
+    ------
+    ValueError
+        If any values are not between 0 and 1.
 
     Examples
     --------
@@ -360,12 +428,14 @@ def create_similarity_matrix(dict_sets: List[List[Dict[str, float]]]) -> Tuple[n
     Parameters
     ----------
     dict_sets : List[List[Dict[str, float]]]
-        List of m sets, where each set contains dictionaries with PIP values
+        List of m sets, where each set contains dictionaries with PIP values.
 
     Returns
     -------
     Tuple[np.ndarray, List[Dict[str, float]]]
-        Similarity matrix and flattened list of dictionaries
+        A tuple containing:
+        - Similarity matrix (n_dicts x n_dicts)
+        - Flattened list of dictionaries
 
     Examples
     --------
@@ -413,15 +483,20 @@ def cluster_cs(dict_sets: List[List[Dict[str, float]]], threshold: float = 0.9) 
     Parameters
     ----------
     dict_sets : List[List[Dict[str, float]]]
-        List of m sets, where each set contains dictionaries with PIP values
+        List of m sets, where each set contains dictionaries with PIP values.
     threshold : float, optional
-        Clustering threshold (default is 0.9)
+        Clustering threshold, by default 0.9.
 
     Returns
     -------
-    List[Dict[str, float]]
-        List of merged dictionaries, where each dictionary contains
-        the maximum PIP value for each key across its cluster
+    List[List[str]]
+        List of merged clusters, where each cluster contains
+        a list of unique SNP IDs from the dictionaries in that cluster.
+
+    Raises
+    ------
+    ValueError
+        If less than two sets of dictionaries are provided or if any set is empty.
 
     Examples
     --------

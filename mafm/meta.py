@@ -3,6 +3,8 @@
 import logging
 import os
 from multiprocessing import Pool
+from typing import Dict, List, Tuple, Any, Optional
+
 import numpy as np
 import pandas as pd
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeRemainingColumn
@@ -16,21 +18,35 @@ from mafm.sumstats import munge
 logger = logging.getLogger("META")
 
 
-def meta_sumstats(
-    inputs: LocusSet,
-) -> pd.DataFrame:
+def meta_sumstats(inputs: LocusSet) -> pd.DataFrame:
     """
-    Perform fixed effect meta-analysis.
+    Perform fixed effect meta-analysis of summary statistics.
 
     Parameters
     ----------
     inputs : LocusSet
-        List of input data.
+        LocusSet containing input data from multiple studies.
 
     Returns
     -------
     pd.DataFrame
-        Meta-analysis summary statistics.
+        Meta-analysis summary statistics with columns: SNPID, BETA, SE, P, EAF, CHR, BP, EA, NEA.
+
+    Notes
+    -----
+    This function performs inverse-variance weighted fixed-effects meta-analysis:
+    
+    1. Merges summary statistics from all studies on SNPID
+    2. Calculates inverse-variance weights (1/SE²)
+    3. Computes weighted average effect size
+    4. Calculates meta-analysis standard error
+    5. Computes Z-scores and p-values
+    6. Performs sample-size weighted averaging of effect allele frequencies
+    
+    The meta-analysis formulas used:
+    - Beta_meta = Σ(Beta_i * Weight_i) / Σ(Weight_i)
+    - SE_meta = 1 / sqrt(Σ(Weight_i))
+    - Weight_i = 1 / SE_i²
     """
     # Merge all dataframes on SNPID
     merged_df = inputs.loci[0].original_sumstats[[ColName.SNPID]].copy()
@@ -79,21 +95,35 @@ def meta_sumstats(
     return munge(output_df)
 
 
-def meta_lds(
-    inputs: LocusSet,
-) -> LDMatrix:
+def meta_lds(inputs: LocusSet) -> LDMatrix:
     """
-    Perform meta-analysis of LD matrices.
+    Perform meta-analysis of LD matrices using sample-size weighted averaging.
 
     Parameters
     ----------
     inputs : LocusSet
-        List of input data.
+        LocusSet containing input data from multiple studies.
 
     Returns
     -------
     LDMatrix
-        Meta-analysis LD matrix.
+        Meta-analyzed LD matrix with merged variant map.
+
+    Notes
+    -----
+    This function performs the following operations:
+    
+    1. Identifies unique variants across all studies
+    2. Creates a master variant list sorted by chromosome and position
+    3. Performs sample-size weighted averaging of LD correlations
+    4. Handles missing variants by setting weights to zero
+    5. Optionally meta-analyzes allele frequencies if available
+    
+    The meta-analysis formula:
+    LD_meta[i,j] = Σ(LD_k[i,j] * N_k) / Σ(N_k)
+    
+    where k indexes studies, N_k is sample size, and the sum is over studies
+    that have both variants i and j.
     """
     # Get unique variants across all studies
     variant_dfs = [input.ld.map for input in inputs.loci]
@@ -149,22 +179,31 @@ def meta_lds(
     return LDMatrix(merged_variants, merged_ld.astype(np.float32))
 
 
-def meta_all(
-    inputs: LocusSet,
-) -> Locus:
+def meta_all(inputs: LocusSet) -> Locus:
     """
-    Perform meta-analysis of summary statistics and LD matrices.
+    Perform comprehensive meta-analysis of both summary statistics and LD matrices.
 
     Parameters
     ----------
     inputs : LocusSet
-        List of input data.
+        LocusSet containing input data from multiple studies.
 
     Returns
     -------
     Locus
-        Meta-analysis result.
+        Meta-analyzed Locus object with combined population and cohort identifiers.
 
+    Notes
+    -----
+    This function:
+    
+    1. Performs meta-analysis of summary statistics using inverse-variance weighting
+    2. Performs meta-analysis of LD matrices using sample-size weighting
+    3. Combines population and cohort names from all input studies
+    4. Sums sample sizes across studies
+    5. Intersects the meta-analyzed data to ensure consistency
+    
+    Population and cohort names are combined with "+" as separator and sorted alphabetically.
     """
     meta_sumstat = meta_sumstats(inputs)
     meta_ld = meta_lds(inputs)
@@ -183,22 +222,31 @@ def meta_all(
     return Locus(popu, cohort, sample_size, sumstats=meta_sumstat, ld=meta_ld, if_intersect=True)
 
 
-def meta_by_population(
-    inputs: LocusSet,
-) -> dict[str, Locus]:
+def meta_by_population(inputs: LocusSet) -> Dict[str, Locus]:
     """
-    Perform meta-analysis of summary statistics and LD matrices within each population.
+    Perform meta-analysis within each population separately.
 
     Parameters
     ----------
     inputs : LocusSet
-        List of input data.
+        LocusSet containing input data from multiple studies.
 
     Returns
     -------
-    Locus
-        Meta-analysis result.
+    Dict[str, Locus]
+        Dictionary mapping population codes to meta-analyzed Locus objects.
 
+    Notes
+    -----
+    This function:
+    
+    1. Groups studies by population code
+    2. Performs meta-analysis within each population group
+    3. For single-study populations, applies intersection without meta-analysis
+    4. Returns a dictionary with population codes as keys
+    
+    This approach preserves population-specific LD patterns while still
+    allowing meta-analysis of multiple cohorts within the same population.
     """
     meta_popu = {}
     for input in inputs.loci:
@@ -216,26 +264,41 @@ def meta_by_population(
     return meta_popu
 
 
-def meta(
-    inputs: LocusSet,
-    meta_method: str = "meta_all",
-) -> LocusSet:
+def meta(inputs: LocusSet, meta_method: str = "meta_all") -> LocusSet:
     """
-    Perform meta-analysis of summary statistics and LD matrices.
+    Perform meta-analysis using the specified method.
 
     Parameters
     ----------
     inputs : LocusSet
-        List of input data.
+        LocusSet containing input data from multiple studies.
     meta_method : str, optional
-        Meta-analysis method, by default "meta_all"
-        Options: "meta_all", "meta_by_population", "no_meta".
+        Meta-analysis method to use, by default "meta_all".
+        Options:
+        - "meta_all": Meta-analyze all studies together
+        - "meta_by_population": Meta-analyze within each population separately  
+        - "no_meta": No meta-analysis, just intersect individual studies
 
     Returns
     -------
     LocusSet
-        Meta-analysis result.
+        LocusSet containing meta-analyzed results.
 
+    Raises
+    ------
+    ValueError
+        If an unsupported meta-analysis method is specified.
+
+    Notes
+    -----
+    The different methods serve different purposes:
+    
+    - "meta_all": Maximizes power by combining all studies, but may be inappropriate
+      if LD patterns differ substantially between populations
+    - "meta_by_population": Preserves population-specific LD while allowing
+      meta-analysis within populations  
+    - "no_meta": Keeps studies separate, useful for comparison or when
+      meta-analysis is not appropriate
     """
     if meta_method == "meta_all":
         return LocusSet([meta_all(inputs)])
@@ -248,21 +311,38 @@ def meta(
         raise ValueError(f"Unsupported meta-analysis method: {meta_method}")
 
 
-def meta_locus(args):
+def meta_locus(args: Tuple[str, pd.DataFrame, str, str]) -> List[List[Any]]:
     """
     Process a single locus for meta-analysis.
 
-    Args
-    ----
-        args: A tuple containing (locus_id, locus_info, outdir, meta_method).
-            locus_id: The ID of the locus.
-            locus_info: DataFrame containing locus information.
-            outdir: Output directory path.
-            meta_method: Method for meta-analysis.
+    Parameters
+    ----------
+    args : Tuple[str, pd.DataFrame, str, str]
+        A tuple containing:
+        - locus_id : str
+            The ID of the locus
+        - locus_info : pd.DataFrame  
+            DataFrame containing locus information
+        - outdir : str
+            Output directory path
+        - meta_method : str
+            Method for meta-analysis
 
     Returns
     -------
-        list: A list of results containing processed locus information.
+    List[List[Any]]
+        A list of results containing processed locus information.
+        Each inner list contains: [chrom, start, end, popu, sample_size, cohort, out_prefix, locus_id]
+
+    Notes
+    -----
+    This function is designed for parallel processing and:
+    
+    1. Loads the locus set from the provided information
+    2. Performs meta-analysis using the specified method  
+    3. Creates output directory for the locus
+    4. Saves results to compressed files (sumstats.gz, ld.npz, ldmap.gz)
+    5. Returns metadata for each processed locus
     """
     locus_id, locus_info, outdir, meta_method = args
     results = []
@@ -298,24 +378,43 @@ def meta_loci(
     outdir: str,
     threads: int = 1,
     meta_method: str = "meta_all",
-):
+) -> None:
     """
-    Meta-analysis of summary statistics and LD matrices.
+    Perform meta-analysis on multiple loci in parallel.
 
     Parameters
     ----------
     inputs : str
-        Input files.
+        Path to input file containing locus information.
+        Must be a tab-separated file with columns including 'locus_id'.
     outdir : str
-        Output directory.
+        Output directory path where results will be saved.
     threads : int, optional
-        Number of threads, by default 1.
+        Number of parallel threads to use, by default 1.
     meta_method : str, optional
-        Meta-analysis method, by default "meta_all".
+        Meta-analysis method to use, by default "meta_all".
+        See meta() function for available options.
 
     Returns
     -------
     None
+        Results are saved to files in the output directory.
+
+    Notes
+    -----
+    This function:
+    
+    1. Reads locus information from the input file
+    2. Groups loci by locus_id for parallel processing
+    3. Processes each locus group using the specified meta-analysis method
+    4. Saves results with a progress bar for user feedback
+    5. Creates a summary file (loci_info.txt) with all processed loci
+    
+    The input file should contain columns: locus_id, prefix, popu, cohort, sample_size.
+    Each locus_id can have multiple rows representing different cohorts/populations.
+    
+    Output files are organized as:
+    {outdir}/{locus_id}/{prefix}.{sumstats.gz,ld.npz,ldmap.gz}
     """
     loci_info = pd.read_csv(inputs, sep="\t")
     new_loci_info = pd.DataFrame(columns=loci_info.columns)

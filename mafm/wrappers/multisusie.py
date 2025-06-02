@@ -1,4 +1,4 @@
-"""Wrapper for MultiSuSiE."""
+"""Wrapper for MultiSuSiE multi-ancestry fine-mapping."""
 
 import json
 import logging
@@ -32,49 +32,180 @@ def run_multisusie(
     max_iter: int = 100,
     tol: float = 1e-3,
     min_abs_corr: float = 0.1,
-):
+) -> CredibleSet:
     """
-    Run MultiSuSiE.
+    Run MultiSuSiE for multi-ancestry fine-mapping analysis.
+
+    MultiSuSiE extends the SuSiE framework to jointly analyze summary statistics
+    from multiple populations/ancestries, allowing for effect size correlation
+    across populations while accounting for population-specific LD structures.
+    This enables more powerful fine-mapping by leveraging shared causal variants
+    across diverse populations.
 
     Parameters
     ----------
     locus_set : LocusSet
-        The LocusSet to run MultiSuSiE on.
+        LocusSet object containing multiple Locus objects, each representing
+        summary statistics and LD data from different populations/ancestries.
+        All loci should cover the same genomic region with overlapping variants.
     max_causal : int, optional
-        Maximum number of causal variants, by default 1.
+        Maximum number of causal variants (L parameter), by default 1.
+        This determines the number of single-effect components in the model
+        across all populations.
     coverage : float, optional
-        Coverage of the credible set, by default 0.95.
+        Coverage probability for credible sets, by default 0.95.
+        This determines the cumulative posterior probability mass
+        included in each credible set.
     rho : float, optional
-        The prior correlation between causal variants, by default 0.75.
+        Prior correlation between causal effect sizes across populations, by default 0.75.
+        Higher values assume more similar effect sizes between populations,
+        while lower values allow for more population-specific effects.
+        Can also be provided as a K×K matrix for population-specific correlations.
     scaled_prior_variance : float, optional
-        The scaled prior variance, by default 0.2.
+        Scaled prior variance for effect sizes, by default 0.2.
+        This parameter controls the expected magnitude of causal effects,
+        scaled by the residual variance. Larger values allow for larger effects.
     standardize : bool, optional
-        Whether to standardize the data, by default False.
+        Whether to standardize genotypes to have variance 1, by default False.
+        Standardization can improve numerical stability but may affect
+        interpretation of effect sizes.
     pop_spec_standardization : bool, optional
         Whether to perform population-specific standardization, by default True.
+        If True and standardize=True, standardizes within each population separately.
+        If False, uses pooled standardization across all populations.
     estimate_residual_variance : bool, optional
-        Whether to estimate the residual variance, by default True.
+        Whether to estimate residual variance from data, by default True.
+        If False, residual variance is assumed to be 1 for all populations.
     estimate_prior_variance : bool, optional
-        Whether to estimate the prior variance, by default True.
+        Whether to estimate prior variance adaptively, by default True.
+        Adaptive estimation can improve model fit by optimizing the
+        prior variance based on the data.
     estimate_prior_method : str, optional
-        The method to estimate the prior variance, by default "early_EM".
+        Method for prior variance estimation, by default "early_EM".
+        Options include "early_EM", "EM", "optim", or None.
+        "early_EM" provides good balance between speed and accuracy.
     pop_spec_effect_priors : bool, optional
-        Whether to use population-specific effect priors, by default True.
+        Whether to use population-specific effect size priors, by default True.
+        Allows for different prior variances across populations,
+        accommodating population-specific effect size distributions.
     iter_before_zeroing_effects : int, optional
-        The number of iterations before zeroing out effects, by default 5.
+        Number of iterations before zeroing weak effects, by default 5.
+        Components with low likelihood are removed after this many iterations
+        to improve computational efficiency and model parsimony.
     prior_tol : float, optional
-        The tolerance for the prior, by default 1e-9.
+        Tolerance for minimum prior variance, by default 1e-9.
+        Components with prior variance below this threshold are excluded
+        from credible set calculations.
     max_iter : int, optional
-        The maximum number of iterations, by default 100.
+        Maximum number of iterations for the IBSS algorithm, by default 100.
+        More iterations may improve convergence but increase runtime.
     tol : float, optional
-        The tolerance for convergence, by default 1e-3.
+        Convergence tolerance for the ELBO, by default 1e-3.
+        Algorithm stops when ELBO change falls below this threshold.
     min_abs_corr : float, optional
-        The minimum absolute correlation, by default 0.
+        Minimum absolute correlation for credible set purity, by default 0.1.
+        Credible sets with pairwise correlations below this threshold
+        may be filtered based on purity criteria.
 
     Returns
     -------
     CredibleSet
-        The credible set.
+        Credible set object containing:
+        - Posterior inclusion probabilities aggregated across populations
+        - Credible sets for each detected signal
+        - Lead SNPs (highest PIP in each credible set)
+        - Coverage probabilities and purity measures
+        - Multi-ancestry algorithm parameters
+
+    Notes
+    -----
+    MultiSuSiE implements a multi-population extension of the SuSiE model:
+
+    y_k = Σ(l=1 to L) X_k * b_k,l + ε_k
+
+    where:
+    - y_k is the phenotype vector for population k
+    - X_k is the genotype matrix for population k
+    - b_k,l is the l-th single-effect vector for population k
+    - ε_k is the residual error for population k
+    - Effect sizes b_k,l are correlated across populations via correlation matrix ρ
+
+    Key innovations:
+
+    1. **Cross-population effect correlation**: Models correlation structure
+       of causal effects across populations using correlation matrix ρ
+
+    2. **Population-specific LD**: Accounts for different LD patterns
+       across populations while sharing causal variant locations
+
+    3. **Adaptive prior estimation**: Estimates population-specific or
+       shared prior variances based on the data
+
+    4. **Joint credible sets**: Constructs credible sets that aggregate
+       evidence across all populations
+
+    The algorithm workflow:
+    1. Convert GWAS summary statistics to sufficient statistics for each population
+    2. Initialize L single-effect regressions with correlated priors
+    3. Iteratively update effects using multi-population variational Bayes
+    4. Estimate residual and prior variances adaptively
+    5. Monitor convergence using multi-population ELBO
+    6. Construct joint credible sets across populations
+
+    Advantages over single-population methods:
+    - Increased power through multi-ancestry meta-analysis
+    - Better resolution through diverse LD patterns
+    - Robustness to population-specific confounding
+    - Natural handling of trans-ethnic fine-mapping
+
+    The method performs minor allele frequency (MAF) filtering automatically:
+    - Variants with MAF < single_population_mac_thresh in any population are censored
+    - Variants with MAF < multi_population_maf_thresh in ALL populations are removed
+    - This prevents spurious associations from population-specific rare variants
+
+    Reference:
+    Zou, Y. et al. Fine-mapping from summary data with the "Sum of Single Effects" model.
+    PLoS Genet. 18, e1010299 (2022).
+
+    Examples
+    --------
+    >>> # Basic multi-ancestry fine-mapping
+    >>> credible_set = run_multisusie(locus_set)
+    >>> print(f"Found {credible_set.n_cs} credible sets")
+    >>> print(f"Populations analyzed: {len(locus_set.loci)}")
+    Found 1 credible sets
+    Populations analyzed: 3
+
+    >>> # Multi-ancestry with multiple causal variants and custom correlation
+    >>> credible_set = run_multisusie(
+    ...     locus_set,
+    ...     max_causal=5,
+    ...     rho=0.8,  # Higher cross-population correlation
+    ...     coverage=0.99,
+    ...     pop_spec_effect_priors=True
+    ... )
+    >>> print(f"Detected {credible_set.n_cs} independent signals")
+    >>> print(f"Credible set sizes: {credible_set.cs_sizes}")
+    Detected 2 independent signals
+    Credible set sizes: [8, 15]
+
+    >>> # Access aggregated posterior inclusion probabilities
+    >>> top_variants = credible_set.pips.nlargest(10)
+    >>> print("Top 10 variants by aggregated PIP:")
+    >>> print(top_variants)
+    Top 10 variants by aggregated PIP:
+    rs123456    0.9234
+    rs789012    0.8456
+    rs345678    0.7789
+    ...
+
+    >>> # Examine cross-population evidence
+    >>> for i, snps in enumerate(credible_set.snps):
+    ...     lead_snp = credible_set.lead_snps[i]
+    ...     pip = credible_set.pips[lead_snp]
+    ...     print(f"Signal {i+1}: {lead_snp} (PIP={pip:.4f})")
+    Signal 1: rs123456 (PIP=0.9234)
+    Signal 2: rs789012 (PIP=0.8456)
     """
     logger.info(f"Running MultiSuSiE on {locus_set}")
     parameters = {

@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -18,11 +18,29 @@ class Locus:
     """
     Locus class to represent a genomic locus with associated summary statistics and linkage disequilibrium (LD) matrix.
 
+    Parameters
+    ----------
+    popu : str
+        Population code. e.g. "EUR". Choose from ["AFR", "AMR", "EAS", "EUR", "SAS"].
+    cohort : str
+        Cohort name.
+    sample_size : int
+        Sample size.
+    sumstats : pd.DataFrame
+        Summary statistics DataFrame.
+    ld : Optional[LDMatrix], optional
+        LD matrix, by default None.
+    if_intersect : bool, optional
+        Whether to intersect the LD matrix and summary statistics file, by default False.
+
     Attributes
     ----------
     original_sumstats : pd.DataFrame
         The original summary statistics file.
-        Population code.
+    sumstats : pd.DataFrame
+        The processed summary statistics file.
+    ld : LDMatrix
+        The LD matrix object.
     chrom : int
         Chromosome.
     start : int
@@ -31,18 +49,16 @@ class Locus:
         End position of the locus.
     n_snps : int
         Number of SNPs in the locus.
+    prefix : str
+        The prefix combining population and cohort.
     locus_id : str
         Unique identifier for the locus.
     is_matched : bool
         Whether the LD matrix and summary statistics file are matched.
 
-    Methods
-    -------
-    __init__(popu: str, cohort: str, sample_size: int, sumstats: pd.DataFrame, ld: Optional[LDMatrix] = None, if_intersect: bool = False)
-    __repr__()
-        Return a string representation of the Locus object.
-    copy()
-        Copy the Locus object.
+    Notes
+    -----
+    If no LD matrix is provided, only ABF method can be used for fine-mapping.
     """
 
     def __init__(
@@ -53,7 +69,7 @@ class Locus:
         sumstats: pd.DataFrame,
         ld: Optional[LDMatrix] = None,
         if_intersect: bool = False,
-    ):
+    ) -> None:
         """
         Initialize the Locus object.
 
@@ -66,12 +82,15 @@ class Locus:
         sample_size : int
             Sample size.
         sumstats : pd.DataFrame
-            Sumstats file.
-        ld : LDMatrix, optional
-            LD matrix.
+            Summary statistics DataFrame.
+        ld : Optional[LDMatrix], optional
+            LD matrix, by default None.
         if_intersect : bool, optional
-            Whether to intersect the LD matrix and sumstats file, by default True.
+            Whether to intersect the LD matrix and summary statistics file, by default False.
 
+        Warnings
+        --------
+        If no LD matrix is provided, a warning is logged that only ABF method can be used.
         """
         self.sumstats = sumstats
         self._original_sumstats = self.sumstats.copy()
@@ -89,69 +108,83 @@ class Locus:
             self.ld = LDMatrix(pd.DataFrame(), np.array([]))
 
     @property
-    def original_sumstats(self):
+    def original_sumstats(self) -> pd.DataFrame:
         """Get the original sumstats file."""
         return self._original_sumstats
 
     @property
-    def popu(self):
+    def popu(self) -> str:
         """Get the population code."""
         return self._popu
 
     @property
-    def cohort(self):
+    def cohort(self) -> str:
         """Get the cohort name."""
         return self._cohort
 
     @property
-    def sample_size(self):
+    def sample_size(self) -> int:
         """Get the sample size."""
         return self._sample_size
 
     @property
-    def chrom(self):
+    def chrom(self) -> int:
         """Get the chromosome."""
         return self.sumstats[ColName.CHR].iloc[0]
 
     @property
-    def start(self):
+    def start(self) -> int:
         """Get the start position."""
         return self.sumstats[ColName.BP].min()
 
     @property
-    def end(self):
+    def end(self) -> int:
         """Get the end position."""
         return self.sumstats[ColName.BP].max()
 
     @property
-    def n_snps(self):
+    def n_snps(self) -> int:
         """Get the number of SNPs."""
         return len(self.sumstats)
 
     @property
-    def prefix(self):
+    def prefix(self) -> str:
         """Get the prefix of the locus."""
         return f"{self.popu}_{self.cohort}"
 
     @property
-    def locus_id(self):
+    def locus_id(self) -> str:
         """Get the locus ID."""
         return f"{self.popu}_{self.cohort}_chr{self.chrom}:{self.start}-{self.end}"
 
     @property
-    def is_matched(self):
+    def is_matched(self) -> bool:
         """Check if the LD matrix and sumstats file are matched."""
         # check the order of SNPID in the LD matrix and the sumstats file are the exact same
         if self.ld is None:
             return False
         return self.ld.map[ColName.SNPID].equals(self.sumstats[ColName.SNPID])
 
-    def __repr__(self):
-        """Return a string representation of the Locus object."""
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the Locus object.
+
+        Returns
+        -------
+        str
+            String representation of the Locus object.
+        """
         return f"Locus(popu={self.popu}, cohort={self.cohort}, sample_size={self.sample_size}, chr={self.chrom}, start={self.start}, end={self.end}, sumstats={self.sumstats.shape}, ld={self.ld.r.shape})"
 
-    def copy(self):
-        """Copy the Locus object."""
+    def copy(self) -> "Locus":
+        """
+        Copy the Locus object.
+
+        Returns
+        -------
+        Locus
+            A copy of the Locus object.
+        """
         return Locus(self.popu, self.cohort, self.sample_size, self.sumstats.copy(), self.ld.copy(), if_intersect=False)
 
 
@@ -159,9 +192,14 @@ class LocusSet:
     """
     LocusSet class to represent a set of genomic loci.
 
+    Parameters
+    ----------
+    loci : List[Locus]
+        List of Locus objects.
+
     Attributes
     ----------
-    loci : list[Locus]
+    loci : List[Locus]
         List of Locus objects.
     n_loci : int
         Number of loci.
@@ -174,57 +212,72 @@ class LocusSet:
     locus_id : str
         Unique identifier for the locus.
 
-    Methods
-    -------
-    __init__(loci: list[Locus])
-    __repr__()
-        Return a string representation of the LocusSet object.
-    copy()
-        Copy the LocusSet object.
+    Raises
+    ------
+    ValueError
+        If the chromosomes of the loci are not the same.
     """
 
-    def __init__(self, loci: list[Locus]):
+    def __init__(self, loci: List[Locus]) -> None:
         """
         Initialize the LocusSet object.
 
         Parameters
         ----------
-        loci : list[Locus]
+        loci : List[Locus]
             List of Locus objects.
-
         """
         self.loci = loci
 
     @property
-    def n_loci(self):
+    def n_loci(self) -> int:
         """Get the number of loci."""
         return len(self.loci)
 
     @property
-    def chrom(self):
-        """Get the chromosome."""
+    def chrom(self) -> int:
+        """
+        Get the chromosome.
+
+        Returns
+        -------
+        int
+            Chromosome number.
+
+        Raises
+        ------
+        ValueError
+            If the chromosomes of the loci are not the same.
+        """
         chrom_list = [locus.chrom for locus in self.loci]
         if len(set(chrom_list)) > 1:
             raise ValueError("The chromosomes of the loci are not the same.")
         return chrom_list[0]
 
     @property
-    def start(self):
+    def start(self) -> int:
         """Get the start position."""
         return min([locus.start for locus in self.loci])
 
     @property
-    def end(self):
+    def end(self) -> int:
         """Get the end position."""
         return max([locus.end for locus in self.loci])
 
     @property
-    def locus_id(self):
+    def locus_id(self) -> str:
         """Get the locus ID."""
         return f"{self.chrom}:{self.start}-{self.end}"
 
-    def __repr__(self):
-        """Return a string representation of the LocusSet object."""
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the LocusSet object.
+
+        Returns
+        -------
+        str
+            String representation of the LocusSet object.
+        """
         return (
             f"LocusSet(\n n_loci={len(self.loci)}, chrom={self.chrom}, start={self.start}, end={self.end}, locus_id={self.locus_id} \n"
             + "\n".join([locus.__repr__() for locus in self.loci])
@@ -232,8 +285,15 @@ class LocusSet:
             + ")"
         )
 
-    def copy(self):
-        """Copy the LocusSet object."""
+    def copy(self) -> "LocusSet":
+        """
+        Copy the LocusSet object.
+
+        Returns
+        -------
+        LocusSet
+            A copy of the LocusSet object.
+        """
         return LocusSet([locus.copy() for locus in self.loci])
 
 
@@ -241,15 +301,34 @@ def intersect_sumstat_ld(locus: Locus) -> Locus:
     """
     Intersect the Variant IDs in the LD matrix and the sumstats file.
 
-    Raises
-    ------
-    ValueError
-        If no common Variant IDs found between the LD matrix and the sumstats file.
+    Parameters
+    ----------
+    locus : Locus
+        Locus object containing LD matrix and summary statistics.
 
     Returns
     -------
     Locus
-        Object containing the intersected LD matrix and sumstats file.
+        Locus object containing the intersected LD matrix and sumstats file.
+
+    Raises
+    ------
+    ValueError
+        If LD matrix not found or no common Variant IDs found between the LD matrix and the sumstats file.
+
+    Warnings
+    --------
+    If only a few common Variant IDs are found (≤ 10), a warning is logged.
+
+    Notes
+    -----
+    This function performs the following operations:
+    
+    1. Checks if LD matrix and summary statistics are already matched
+    2. Finds common SNP IDs between LD matrix and summary statistics
+    3. Subsets both datasets to common variants
+    4. Reorders data to maintain consistency
+    5. Returns a new Locus object with intersected data
     """
     if locus.ld is None:
         raise ValueError("LD matrix not found.")
@@ -284,26 +363,43 @@ def intersect_sumstat_ld(locus: Locus) -> Locus:
     return Locus(locus.popu, locus.cohort, locus.sample_size, intersec_sumstats, intersec_ld)
 
 
-def intersect_loci(list_loci: list[Locus]) -> list[Locus]:
+def intersect_loci(list_loci: List[Locus]) -> List[Locus]:
     """
     Intersect the Variant IDs in the LD matrices and the sumstats files of a list of Locus objects.
 
     Parameters
     ----------
-    list_loci : list[Locus]
+    list_loci : List[Locus]
         List of Locus objects.
 
     Returns
     -------
-    list[Locus]
+    List[Locus]
         List of Locus objects containing the intersected LD matrices and sumstats files.
+
+    Raises
+    ------
+    NotImplementedError
+        This function is not yet implemented.
+
+    Notes
+    -----
+    This function is planned to intersect variant IDs across multiple loci
+    to ensure consistent variant sets for multi-ancestry analysis.
     """
     raise NotImplementedError(
         "Intersect the Variant IDs in the LD matrices and the sumstats files of a list of Locus objects."
     )
 
 
-def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_intersect: bool = False, **kwargs) -> Locus:
+def load_locus(
+    prefix: str, 
+    popu: str, 
+    cohort: str, 
+    sample_size: int, 
+    if_intersect: bool = False, 
+    **kwargs: Any
+) -> Locus:
     """
     Load the input data of the fine-mapping analysis.
 
@@ -319,16 +415,34 @@ def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_interse
         Sample size of the input data.
     if_intersect : bool, optional
         Whether to intersect the input data with the LD matrix, by default False.
+    **kwargs : Any
+        Additional keyword arguments passed to loading functions.
 
     Returns
     -------
     Locus
-        Object containing the input data.
+        Locus object containing the input data.
 
     Raises
     ------
     ValueError
-        If the input files are not found.
+        If the required input files are not found.
+
+    Notes
+    -----
+    The function looks for files with the following patterns:
+    
+    - Summary statistics: {prefix}.sumstat or {prefix}.sumstats.gz
+    - LD matrix: {prefix}.ld or {prefix}.ld.npz
+    - LD map: {prefix}.ldmap or {prefix}.ldmap.gz
+    
+    All files are required for proper functioning.
+
+    Examples
+    --------
+    >>> locus = load_locus('EUR_study1', 'EUR', 'study1', 50000)
+    >>> print(f"Loaded locus with {locus.n_snps} SNPs")
+    Loaded locus with 10000 SNPs
     """
     if os.path.exists(f"{prefix}.sumstat"):
         sumstats_path = f"{prefix}.sumstat"
@@ -355,21 +469,52 @@ def load_locus(prefix: str, popu: str, cohort: str, sample_size: int, if_interse
     return Locus(popu, cohort, sample_size, sumstats=sumstats, ld=ld, if_intersect=if_intersect)
 
 
-def load_locus_set(locus_info: pd.DataFrame, if_intersect: bool = False, **kwargs) -> LocusSet:
+def load_locus_set(locus_info: pd.DataFrame, if_intersect: bool = False, **kwargs: Any) -> LocusSet:
     """
-    Load the input data of the fine-mapping analysis.
+    Load the input data of the fine-mapping analysis for multiple loci.
 
     Parameters
     ----------
     locus_info : pd.DataFrame
-        Dataframe containing the locus information.
+        DataFrame containing the locus information with required columns:
+        ['prefix', 'popu', 'cohort', 'sample_size'].
     if_intersect : bool, optional
         Whether to intersect the input data with the LD matrix, by default False.
+    **kwargs : Any
+        Additional keyword arguments passed to load_locus function.
 
     Returns
     -------
     LocusSet
-        Object containing the input data.
+        LocusSet object containing the input data.
+
+    Raises
+    ------
+    ValueError
+        If required columns are missing or if the combination of popu and cohort is not unique.
+
+    Notes
+    -----
+    The locus_info DataFrame must contain the following columns:
+    
+    - prefix: File prefix for each locus
+    - popu: Population code
+    - cohort: Cohort name  
+    - sample_size: Sample size for the cohort
+    
+    Each row represents one locus to be loaded.
+
+    Examples
+    --------
+    >>> locus_info = pd.DataFrame({
+    ...     'prefix': ['EUR_study1', 'ASN_study2'],
+    ...     'popu': ['EUR', 'ASN'], 
+    ...     'cohort': ['study1', 'study2'],
+    ...     'sample_size': [50000, 30000]
+    ... })
+    >>> locus_set = load_locus_set(locus_info)
+    >>> print(f"Loaded {locus_set.n_loci} loci")
+    Loaded 2 loci
     """
     required_cols = ["prefix", "popu", "cohort", "sample_size"]
     missing_cols = [col for col in required_cols if col not in locus_info.columns]

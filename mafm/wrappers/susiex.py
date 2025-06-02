@@ -1,9 +1,9 @@
-"""Wrapper for SuSiEx."""
+"""Wrapper for SuSiEx multi-ancestry fine-mapping."""
 
 import json
 import logging
 import os
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -30,41 +30,176 @@ def run_susiex(
     max_iter: int = 100,
     tol: float = 1e-3,
     temp_dir: Optional[str] = None,
-):
+) -> CredibleSet:
     """
-    Run SuSiEx on a LocusSet.
+    Run SuSiEx multi-ancestry fine-mapping analysis on a LocusSet.
+
+    SuSiEx (SuSiE for Cross-ancestry) extends the SuSiE framework for
+    multi-ancestry fine-mapping, allowing joint analysis of GWAS summary
+    statistics from multiple populations. It accounts for population-specific
+    LD structures while identifying shared causal variants across ancestries.
 
     Parameters
     ----------
     locus_set : LocusSet
-        The LocusSet to run SuSiEx on.
+        LocusSet object containing multiple Locus objects from different
+        populations/ancestries covering the same genomic region.
+        Each locus should have summary statistics and LD matrix data.
     max_causal : int, optional
-        The maximum number of causal SNPs, default is 1.
+        Maximum number of causal variants to detect, by default 1.
+        This sets the upper limit on the number of independent signals
+        that can be identified in the analysis.
     coverage : float, optional
-        The coverage of the credible set, default is 0.95.
+        Coverage probability for credible sets, by default 0.95.
+        Determines the cumulative posterior probability mass required
+        for credible set inclusion.
     pval_thresh : float, optional
-        The p-value threshold for SuSiEx, default is 1e-5.
+        P-value threshold for variant inclusion, by default 1.
+        Variants with p-values above this threshold are excluded
+        from the analysis to reduce computational burden.
     maf_thresh : float, optional
-        The MAF threshold for SuSiEx, default is 0.005.
+        Minor allele frequency threshold for variant filtering, by default 0.005.
+        Variants with MAF below this threshold in any population are
+        excluded to avoid spurious associations from rare variants.
     mult_step : bool, optional
-        Whether to use multiple steps in SuSiEx, default is False.
+        Whether to use multi-step refinement procedure, by default True.
+        Multi-step refinement can improve fine-mapping resolution by
+        iteratively updating the analysis with refined credible sets.
     keep_ambig : bool, optional
-        Whether to keep ambiguous SNPs in SuSiEx, default is True.
+        Whether to retain ambiguous variants in the analysis, by default True.
+        Ambiguous variants are those with unclear strand orientation
+        or allele assignments across populations.
     n_threads : int, optional
-        The number of threads to use in SuSiEx, default is 1.
+        Number of parallel threads for computation, by default 1.
+        Higher values can speed up analysis but require more memory.
     min_purity : float, optional
-        The minimum purity for SuSiEx, default is 0.5.
+        Minimum purity threshold for credible sets, by default 0.
+        Credible sets with purity below this threshold may be filtered
+        out as potentially unreliable.
     max_iter : int, optional
-        The maximum number of iterations for SuSiEx, default is 100.
+        Maximum number of iterations for the optimization algorithm, by default 100.
+        More iterations may improve convergence but increase runtime.
     tol : float, optional
-        The tolerance for SuSiEx, default is 1e-3.
-    temp_dir : str, optional
-        The temporary directory to use in SuSiEx, default is None.
+        Convergence tolerance for the optimization algorithm, by default 1e-3.
+        Smaller values require tighter convergence but may improve accuracy.
+    temp_dir : Optional[str], optional
+        Temporary directory for intermediate files, by default None.
+        If None, a temporary directory is automatically created.
 
     Returns
     -------
     CredibleSet
-        The credible set.
+        Credible set object containing:
+        - Multi-ancestry posterior inclusion probabilities
+        - Credible sets identified across populations
+        - Lead SNPs for each credible set
+        - Coverage and purity statistics
+        - SuSiEx-specific parameters and results
+
+    Notes
+    -----
+    SuSiEx implements a multi-ancestry extension of the SuSiE model:
+
+    y_k = Σ(l=1 to L) X_k * γ_l * β_l + ε_k
+
+    where:
+    - y_k is the phenotype vector for population k
+    - X_k is the genotype matrix for population k
+    - γ_l is the binary indicator vector for causal variants in component l
+    - β_l is the effect size vector for component l
+    - ε_k is the residual error for population k
+
+    Key features:
+
+    1. **Cross-ancestry information sharing**: Leverages evidence from
+       multiple populations to improve fine-mapping power and resolution
+
+    2. **Population-specific LD modeling**: Accounts for different LD
+       patterns across populations while assuming shared causal variants
+
+    3. **Adaptive variant filtering**: Applies population-specific quality
+       control filters while maintaining variant overlap for joint analysis
+
+    4. **Multi-step refinement**: Optionally refines results through
+       iterative analysis with updated variant sets
+
+    The algorithm workflow:
+    1. Harmonize summary statistics and LD data across populations
+    2. Apply quality control filters (MAF, p-value thresholds)
+    3. Convert data to SuSiEx input format
+    4. Run multi-ancestry SuSiE analysis
+    5. Extract credible sets with cross-population evidence
+    6. Apply purity filters and post-processing
+
+    File format requirements:
+    - Summary statistics: tab-separated with standard column names
+    - LD matrices: binary format with corresponding variant maps
+    - Population-specific allele frequency data
+
+    Advantages over single-population methods:
+    - Increased statistical power through meta-analysis
+    - Better fine-mapping resolution via diverse LD patterns
+    - Robustness to population-specific confounding
+    - Natural framework for trans-ethnic studies
+
+    The method automatically handles:
+    - Variant harmonization across populations
+    - Population-specific quality control
+    - LD matrix format conversion
+    - Multi-threading for computational efficiency
+
+    Examples
+    --------
+    >>> # Basic multi-ancestry fine-mapping
+    >>> credible_set = run_susiex(locus_set)
+    >>> print(f"Found {credible_set.n_cs} credible sets")
+    >>> print(f"Populations: {len(locus_set.loci)}")
+    Found 1 credible sets
+    Populations: 3
+
+    >>> # SuSiEx with multiple signals and strict quality control
+    >>> credible_set = run_susiex(
+    ...     locus_set,
+    ...     max_causal=5,
+    ...     coverage=0.99,
+    ...     maf_thresh=0.01,    # Stricter MAF filter
+    ...     min_purity=0.5,     # Require high purity
+    ...     mult_step=True      # Multi-step refinement
+    ... )
+    >>> print(f"Detected {credible_set.n_cs} high-confidence signals")
+    >>> print(f"Credible set sizes: {credible_set.cs_sizes}")
+    Detected 2 high-confidence signals
+    Credible set sizes: [8, 12]
+
+    >>> # High-performance analysis with parallel processing
+    >>> credible_set = run_susiex(
+    ...     locus_set,
+    ...     n_threads=8,        # Parallel processing
+    ...     max_iter=200,       # More iterations
+    ...     tol=1e-6           # Tight convergence
+    ... )
+    >>> print(f"Analysis completed with {credible_set.n_cs} signals")
+    Analysis completed with 3 signals
+
+    >>> # Access cross-population posterior inclusion probabilities
+    >>> top_variants = credible_set.pips.nlargest(10)
+    >>> print("Top 10 variants by cross-population PIP:")
+    >>> print(top_variants)
+    Top 10 variants by cross-population PIP:
+    rs123456    0.8934
+    rs789012    0.7234
+    rs345678    0.6456
+    ...
+
+    >>> # Examine credible sets from multi-ancestry analysis
+    >>> for i, snps in enumerate(credible_set.snps):
+    ...     lead_snp = credible_set.lead_snps[i]
+    ...     pip = credible_set.pips[lead_snp]
+    ...     size = len(snps)
+    ...     print(f"Signal {i+1}: {lead_snp} (PIP={pip:.4f}, size={size})")
+    Signal 1: rs123456 (PIP=0.8934, size=8)
+    Signal 2: rs789012 (PIP=0.7234, size=12)
+    Signal 3: rs345678 (PIP=0.6456, size=15)
     """
     logger.info(f"Running SuSiEx on {locus_set}")
     parameters = {
@@ -97,9 +232,7 @@ def run_susiex(
         ldmap["NCHROBS"] = locus.sample_size * 2
         ldmap.rename(columns={"SNPID": "SNP"}, inplace=True)
         logger.debug(f"Writing {input_prefix}_frq.frq")
-        ldmap[["CHR", "SNP", "A1", "A2", "MAF", "NCHROBS"]].to_csv(
-            f"{input_prefix}_frq.frq", sep="\t", index=False
-        )
+        ldmap[["CHR", "SNP", "A1", "A2", "MAF", "NCHROBS"]].to_csv(f"{input_prefix}_frq.frq", sep="\t", index=False)
         logger.debug(f"Writing {input_prefix}.ld.bin")
         ld = locus.ld.r**2
         ld.astype(np.float32).tofile(f"{input_prefix}.ld.bin")
@@ -142,7 +275,7 @@ def run_susiex(
     tool_manager.run_tool("SuSiEx", cmd, f"{temp_dir}/run.log", required_output_files)
 
     pip_df = pd.read_csv(f"{temp_dir}/chr{chrom}_{start}_{end}.snp", sep="\t")
-    cs_snp = []
+    cs_snp: List[List[str]] = []
     if len(pip_df.columns) == 2:
         logger.warning("No credible set found, please try other parameters.")
         pip = pd.Series(index=pip_df["SNP"].values.tolist())
@@ -156,7 +289,7 @@ def run_susiex(
         pip_df["PIP"] = pip_df[pip_cols].max(axis=1)
         pip = pd.Series(index=pip_df.index.values.tolist(), data=pip_df["PIP"].values.tolist())
 
-    logger.info(f"Fished SuSiEx on {locus_set}")
+    logger.info(f"Finished SuSiEx on {locus_set}")
     logger.info(f"N of credible set: {len(cs_snp)}")
     logger.info(f"Credible set size: {[len(i) for i in cs_snp]}")
     return CredibleSet(
