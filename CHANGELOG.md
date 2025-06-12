@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.0.27] (2025-06-12)
+
+### Added
+- add set_L_by_cojo to cli:pipeline
+
 ## [0.0.26] (2025-06-02)
 
 ### Added
